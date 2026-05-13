@@ -28,7 +28,11 @@ function RootLayoutNav() {
       <Stack.Screen name="course/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="lecture/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="live/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="live-session/[id]" options={{ headerShown: false, animation: "slide_from_bottom" }} />
+      <Stack.Screen name="recorded/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="test/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="doubts" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="notes" options={{ headerShown: false, animation: "slide_from_right" }} />
     </Stack>
   );
 }

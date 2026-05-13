@@ -1,45 +1,83 @@
-# [Project name]
+# VidyaPath LMS
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A mobile learning management system for Class 11–12 Commerce students in India, built with Expo/React Native.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/mobile run dev` — run the Expo dev server
+- Required env: `SESSION_SECRET`
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Mobile: Expo SDK 54, Expo Router (file-based routing)
+- Fonts: @expo-google-fonts/poppins
+- Data: @tanstack/react-query + AsyncStorage for local persistence
+- Animation: react-native-reanimated (skeleton shimmer)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+```
+artifacts/mobile/
+├── app/
+│   ├── (tabs)/          # Home, Courses, Live, Tests, Profile
+│   ├── course/[id].tsx  # Course detail with chapter list
+│   ├── lecture/[id].tsx # Router → live-session or recorded
+│   ├── live/[id].tsx    # Router → live-session or recorded
+│   ├── live-session/[id].tsx  # Live class with real-time chat + reactions
+│   ├── recorded/[id].tsx      # Recorded lecture with Comments/Notes/Info tabs
+│   ├── doubts.tsx             # Doubt forum (ask, upvote, answers)
+│   └── notes.tsx              # Personal notes (create, edit, delete, color)
+├── components/
+│   ├── Skeleton.tsx     # Shimmer loading skeletons
+│   ├── CourseCard.tsx   # Full + compact course card
+│   ├── LiveClassCard.tsx
+│   ├── TestCard.tsx
+│   ├── StatCard.tsx
+│   └── SubjectChip.tsx
+├── context/
+│   ├── AppContext.tsx   # All app data + mutations
+│   └── ThemeContext.tsx # Light/dark toggle (default: light)
+├── constants/colors.ts  # Soft blue palette (primary: #5B9BD5)
+└── hooks/useColors.ts   # Returns palette for current theme
+```
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **Routing pattern**: `lecture/[id]` and `live/[id]` are lightweight routers that dispatch to either `live-session/[id]` or `recorded/[id]` based on the chapter/class state. This keeps each screen focused.
+- **Default light mode**: ThemeContext loads `"light"` as default, reads from AsyncStorage on mount. System color scheme is ignored.
+- **Skeleton loading**: Each tab screen has a simulated 800–1200ms load delay that shows shimmer skeletons, giving the feel of real data fetching.
+- **Soft color palette**: Primary `#5B9BD5` (calm blue), background `#F8FAFC` — chosen for eye comfort during long study sessions.
+- **Subject color coding**: Accountancy=#5B9BD5, Business Studies=#7B8EBF, Economics=#5BAD9B, Mathematics=#9B7BC4, English=#BF7B5B.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Home**: Stats, quick actions (Doubts/Notes/Live/Tests), live banner, continue learning, recent recordings, upcoming classes.
+- **Courses**: Enrolled vs Explore toggle, subject filter chips, search, full course cards.
+- **Live**: Live & Upcoming / Recordings tabs. Hero card for active live class. Joins `live-session/` screen.
+- **Live Session**: Dark stream UI, simulated chat, participant list, emoji reactions, raise hand.
+- **Recorded**: Simulated video player with progress, Comments tab (like/post), Notes tab (save to personal notes), Info tab (mark complete).
+- **Tests**: Summary stats (Total/Done/Pending), difficulty badges, score percentages.
+- **Doubts**: Forum with upvoting, expert answers, open/resolved/mine tabs, post modal with subject picker.
+- **Notes**: Color-coded note cards, full-screen editor, subject filter, search.
+- **Profile**: Dark mode toggle, achievements grid, CBSE badge.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Primary color: soft calm blue (#5B9BD5) — not harsh, easy on eyes
+- Default theme: light mode (user can toggle dark from Profile)
+- Target audience: Class 11–12 Commerce, CBSE India
+- Languages: Hindi + English (toggle in Profile)
+- No high-saturation or jarring colors anywhere
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- After adding new files/directories, Metro needs a workflow restart to detect them (cache issue).
+- `lecture/[id]` requires both `id` (chapter id) and `courseId` query params.
+- `recorded/[id]` accepts optional `?courseId=&chapterId=` for mark-complete functionality.
+- AsyncStorage keys: `app_theme`, `language`, `courses`, `tests`, `doubts`, `notes`, `comments`.
 
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See `expo` skill for Expo-specific patterns
