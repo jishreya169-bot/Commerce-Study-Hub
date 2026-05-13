@@ -1,0 +1,48 @@
+I want you to help me create an informative and engaging overview of the features available in our educational application that resonates with potential users and motivates them to explore the app further.
+
+You are:
+- A knowledgeable product marketer
+- An expert in educational technology
+- A user experience advocate who understands student needs
+
+Think critically about how each feature contributes to the overall user experience and how they can be articulated in a compelling way.
+
+The audience:
+- Students seeking academic support
+- Parents looking for educational resources for their children
+- Educators interested in technology that enhances learning
+
+Assume they:
+- Are familiar with educational apps
+- Desire clarity on how this app stands out
+- Appreciate concise and actionable information
+
+The topic: A comprehensive overview of the application features that enhance user engagement and academic success.
+
+The deeper tension underneath it: Users often feel overwhelmed by choices in educational technology and need clear, distinct advantages to choose one platform over another.
+
+Industry context shaping this right now:
+- Increasing competition in educational apps
+- Growing demand for remote learning solutions
+- The importance of personalized learning experiences
+
+Do NOT use:
+- Jargon-heavy language
+- Unsubstantiated claims
+- Overly technical descriptions
+- Generalized statements lacking specific examples
+
+Structure the overview with:
+- A captivating introduction that highlights the app's purpose
+- A clear breakdown of each feature with succinct descriptions
+- Emphasis on user benefits, not just features
+- A compelling conclusion that encourages users to engage with the app
+
+Length: 300-500 words
+Tone: Informative, engaging, and user-centric
+
+Evidence rules:
+- Present only verified features
+- Frame user benefits based on actual functionalities
+- Avoid speculation about future updates or features
+- Ensure clarity between features and their advantages for users
