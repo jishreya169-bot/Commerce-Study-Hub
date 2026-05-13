@@ -20,17 +20,12 @@ export function SubjectChip({ label, selected, onPress, color }: Props) {
       style={[
         styles.chip,
         {
-          backgroundColor: selected ? activeColor : colors.muted,
+          backgroundColor: selected ? activeColor : colors.card,
           borderColor: selected ? activeColor : colors.border,
         },
       ]}
     >
-      <Text
-        style={[
-          styles.label,
-          { color: selected ? "#FFFFFF" : colors.mutedForeground },
-        ]}
-      >
+      <Text style={[styles.label, { color: selected ? "#FFFFFF" : colors.mutedForeground }]}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -39,11 +34,16 @@ export function SubjectChip({ label, selected, onPress, color }: Props) {
 
 const styles = StyleSheet.create({
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 22,
     borderWidth: 1,
     marginRight: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   label: {
     fontSize: 12,

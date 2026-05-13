@@ -3,12 +3,12 @@ import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
-import { Feather, Ionicons, MaterialIcons } from "@expo/vector-icons";
-import React from "react";
+import { Feather, Ionicons } from "@expo/vector-icons";
+import React, { useContext } from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
+import { ThemeContext } from "@/context/ThemeContext";
 
 function NativeTabLayout() {
   return (
@@ -39,8 +39,8 @@ function NativeTabLayout() {
 
 function ClassicTabLayout() {
   const colors = useColors();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const { theme } = useContext(ThemeContext);
+  const isDark = theme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
 
@@ -52,8 +52,8 @@ function ClassicTabLayout() {
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : colors.background,
-          borderTopWidth: isWeb ? 1 : 0,
+          backgroundColor: isIOS ? "transparent" : colors.card,
+          borderTopWidth: 1,
           borderTopColor: colors.border,
           elevation: 0,
           ...(isWeb ? { height: 84 } : {}),
@@ -61,18 +61,17 @@ function ClassicTabLayout() {
         tabBarBackground: () =>
           isIOS ? (
             <BlurView
-              intensity={100}
+              intensity={95}
               tint={isDark ? "dark" : "light"}
               style={StyleSheet.absoluteFill}
             />
-          ) : isWeb ? (
-            <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]}
-            />
-          ) : null,
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border }]} />
+          ),
         tabBarLabelStyle: {
           fontFamily: "Poppins_500Medium",
           fontSize: 10,
+          marginBottom: 2,
         },
       }}
     >
@@ -81,10 +80,10 @@ function ClassicTabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="house" tintColor={color} size={24} />
+            Platform.OS === "ios" ? (
+              <SymbolView name="house" tintColor={color} size={23} />
             ) : (
-              <Feather name="home" size={22} color={color} />
+              <Feather name="home" size={21} color={color} />
             ),
         }}
       />
@@ -93,10 +92,10 @@ function ClassicTabLayout() {
         options={{
           title: "Courses",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="book" tintColor={color} size={24} />
+            Platform.OS === "ios" ? (
+              <SymbolView name="book" tintColor={color} size={23} />
             ) : (
-              <Ionicons name="book-outline" size={22} color={color} />
+              <Ionicons name="book-outline" size={21} color={color} />
             ),
         }}
       />
@@ -105,10 +104,10 @@ function ClassicTabLayout() {
         options={{
           title: "Live",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="video" tintColor={color} size={24} />
+            Platform.OS === "ios" ? (
+              <SymbolView name="video" tintColor={color} size={23} />
             ) : (
-              <Ionicons name="videocam-outline" size={22} color={color} />
+              <Ionicons name="videocam-outline" size={21} color={color} />
             ),
         }}
       />
@@ -117,10 +116,10 @@ function ClassicTabLayout() {
         options={{
           title: "Tests",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="checkmark.circle" tintColor={color} size={24} />
+            Platform.OS === "ios" ? (
+              <SymbolView name="checkmark.circle" tintColor={color} size={23} />
             ) : (
-              <Ionicons name="clipboard-outline" size={22} color={color} />
+              <Ionicons name="clipboard-outline" size={21} color={color} />
             ),
         }}
       />
@@ -129,10 +128,10 @@ function ClassicTabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="person" tintColor={color} size={24} />
+            Platform.OS === "ios" ? (
+              <SymbolView name="person" tintColor={color} size={23} />
             ) : (
-              <Ionicons name="person-outline" size={22} color={color} />
+              <Ionicons name="person-outline" size={21} color={color} />
             ),
         }}
       />
