@@ -102,12 +102,21 @@ export default function AdminSettings() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Settings</Text>
-        <View style={[styles.adminBadge, { backgroundColor: "#9B7BC418" }]}>
-          <Ionicons name="shield-checkmark" size={12} color="#9B7BC4" />
-          <Text style={[styles.adminBadgeText, { color: "#9B7BC4" }]}>Admin</Text>
+      {/* ── COLORED BANNER ── */}
+      <View style={[styles.headerBanner, { paddingTop: topPad + 8, backgroundColor: "#9B7BC4", overflow: "hidden" }]}>
+        <View style={[styles.dec1, { backgroundColor: "rgba(255,255,255,0.08)" }]} />
+        <View style={[styles.dec2, { backgroundColor: "rgba(255,255,255,0.06)" }]} />
+        <View style={styles.bannerTop}>
+          <View>
+            <Text style={styles.bannerLabel}>ADMIN PANEL</Text>
+            <Text style={styles.bannerTitle}>Settings</Text>
+          </View>
+          <View style={[styles.adminBadge, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
+            <Ionicons name="shield-checkmark" size={12} color="#FFFFFF" />
+            <Text style={styles.adminBadgeText}>Admin</Text>
+          </View>
         </View>
+        <View style={[styles.waveCut, { backgroundColor: colors.background }]} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}>
@@ -370,10 +379,15 @@ export default function AdminSettings() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
-  title: { flex: 1, fontSize: 20, fontFamily: "Poppins_700Bold" },
-  adminBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  adminBadgeText: { fontSize: 11, fontFamily: "Poppins_600SemiBold" },
+  headerBanner: { paddingHorizontal: 16, paddingBottom: 20, position: "relative" },
+  dec1: { position: "absolute", width: 200, height: 200, borderRadius: 100, top: -60, right: -40 },
+  dec2: { position: "absolute", width: 120, height: 120, borderRadius: 60, bottom: -30, left: -20 },
+  bannerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2, zIndex: 1 },
+  bannerLabel: { color: "rgba(255,255,255,0.7)", fontSize: 9, fontFamily: "Poppins_700Bold", letterSpacing: 1.2, marginBottom: 2 },
+  bannerTitle: { color: "#FFFFFF", fontSize: 22, fontFamily: "Poppins_700Bold" },
+  waveCut: { position: "absolute", bottom: 0, left: 0, right: 0, height: 14, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  adminBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  adminBadgeText: { color: "#FFFFFF", fontSize: 11, fontFamily: "Poppins_600SemiBold" },
   scroll: { padding: 16, gap: 12 },
   adminCard: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, borderWidth: 1, padding: 14 },
   adminAvatar: { width: 50, height: 50, borderRadius: 25, justifyContent: "center", alignItems: "center" },

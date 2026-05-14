@@ -8,7 +8,6 @@ import { useColors } from "@/hooks/useColors";
 import * as Haptics from "expo-haptics";
 
 const ALL_CLASSES = ["XII-A", "XII-B", "XII-C", "XI-A", "XI-B", "XI-C"];
-const ALL_SUBJECTS = ["Accountancy", "Economics", "Business Studies", "English", "Mathematics"];
 
 const INIT_TEACHERS = [
   { id: "t1", name: "Prof. Amit Sharma", email: "teacher@vidyapath.in", avatar: "AS", subject: "Accountancy & Economics", qualification: "M.Com, B.Ed", experience: "8 Years", students: 45, courses: 3, rating: 4.9, status: "active", color: "#48BB78", joined: "Aug 2022", assignedClasses: ["XII-A", "XII-B"] },
@@ -27,8 +26,6 @@ export default function AdminTeachers() {
   const [showAssignClass, setShowAssignClass] = useState(false);
   const [assignTarget, setAssignTarget] = useState<typeof INIT_TEACHERS[0] | null>(null);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-
-  // Add teacher form state
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newSubject, setNewSubject] = useState("");
@@ -75,77 +72,122 @@ export default function AdminTeachers() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const activeCount = teachers.filter((t) => t.status === "active").length;
+  const totalStudents = teachers.reduce((a, t) => a + t.students, 0);
+  const avgRating = (teachers.filter((t) => t.rating > 0).reduce((a, t) => a + t.rating, 0) / teachers.filter((t) => t.rating > 0).length).toFixed(1);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Teachers</Text>
-        <TouchableOpacity onPress={() => setShowAdd(true)} style={[styles.addBtn, { backgroundColor: "#9B7BC4" }]} activeOpacity={0.85}>
-          <Ionicons name="add" size={16} color="#FFFFFF" />
-          <Text style={styles.addBtnText}>Add Teacher</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={[styles.summaryRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        {[
-          { val: teachers.filter((t) => t.status === "active").length, label: "Active", color: "#48BB78" },
-          { val: teachers.filter((t) => t.status === "inactive").length, label: "Inactive", color: colors.mutedForeground },
-          { val: teachers.reduce((a, t) => a + t.students, 0), label: "Students", color: colors.primary },
-          { val: (teachers.filter((t) => t.rating > 0).reduce((a, t) => a + t.rating, 0) / teachers.filter((t) => t.rating > 0).length).toFixed(1), label: "Avg Rating", color: "#D69E2E" },
-        ].map((s) => (
-          <View key={s.label} style={styles.summaryItem}>
-            <Text style={[styles.summaryVal, { color: s.color }]}>{s.val}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+      {/* ── COLORED BANNER ── */}
+      <View style={[styles.headerBanner, { paddingTop: topPad + 8, backgroundColor: "#9B7BC4", overflow: "hidden" }]}>
+        <View style={[styles.dec1, { backgroundColor: "rgba(255,255,255,0.08)" }]} />
+        <View style={[styles.dec2, { backgroundColor: "rgba(255,255,255,0.06)" }]} />
+        <View style={styles.bannerTop}>
+          <View>
+            <Text style={styles.bannerLabel}>ADMIN PANEL</Text>
+            <Text style={styles.bannerTitle}>Teachers</Text>
           </View>
-        ))}
+          <TouchableOpacity onPress={() => setShowAdd(true)} style={[styles.addBtn, { backgroundColor: "rgba(255,255,255,0.22)" }]} activeOpacity={0.85}>
+            <Ionicons name="add" size={16} color="#FFFFFF" />
+            <Text style={styles.addBtnText}>Add Teacher</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.bannerStrip, { backgroundColor: "rgba(255,255,255,0.15)" }]}>
+          {[
+            { val: teachers.length, label: "Total", icon: "person-circle" },
+            { val: activeCount, label: "Active", icon: "checkmark-circle" },
+            { val: totalStudents, label: "Students", icon: "people" },
+            { val: avgRating, label: "Avg Rating", icon: "star" },
+          ].map((s, i) => (
+            <React.Fragment key={s.label}>
+              <View style={styles.stripStat}>
+                <Ionicons name={s.icon as any} size={12} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.stripVal}>{s.val}</Text>
+                <Text style={styles.stripLabel}>{s.label}</Text>
+              </View>
+              {i < 3 && <View style={[styles.stripDiv, { backgroundColor: "rgba(255,255,255,0.2)" }]} />}
+            </React.Fragment>
+          ))}
+        </View>
+        <View style={[styles.waveCut, { backgroundColor: colors.background }]} />
       </View>
 
       <View style={[styles.searchWrap, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <View style={[styles.searchBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           <Ionicons name="search-outline" size={15} color={colors.mutedForeground} />
           <TextInput value={search} onChangeText={setSearch} placeholder="Search teachers or subject…" placeholderTextColor={colors.mutedForeground} style={[styles.searchInput, { color: colors.foreground }]} />
+          {search.length > 0 && <TouchableOpacity onPress={() => setSearch("")}><Ionicons name="close-circle" size={16} color={colors.mutedForeground} /></TouchableOpacity>}
         </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}>
         {filtered.map((t) => (
-          <TouchableOpacity key={t.id} onPress={() => setSelectedTeacher(t)} style={[styles.teacherCard, { backgroundColor: colors.card, borderColor: colors.border }]} activeOpacity={0.85}>
-            <View style={[styles.avatar, { backgroundColor: t.color }]}>
-              <Text style={styles.avatarText}>{t.avatar}</Text>
-            </View>
-            <View style={styles.teacherInfo}>
-              <View style={styles.nameRow}>
-                <Text style={[styles.teacherName, { color: colors.foreground }]}>{t.name}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: t.status === "active" ? "#48BB7818" : colors.muted, borderColor: t.status === "active" ? "#48BB7830" : colors.border }]}>
-                  <View style={[styles.statusDot, { backgroundColor: t.status === "active" ? "#48BB78" : colors.mutedForeground }]} />
-                  <Text style={[styles.statusText, { color: t.status === "active" ? "#48BB78" : colors.mutedForeground }]}>{t.status}</Text>
+          <TouchableOpacity key={t.id} onPress={() => { setSelectedTeacher(t); Haptics.selectionAsync(); }} style={[styles.teacherCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: "#000" }]} activeOpacity={0.85}>
+            {/* Colored top accent */}
+            <View style={[styles.cardAccent, { backgroundColor: t.color }]} />
+            <View style={styles.cardBody}>
+              {/* Avatar + info */}
+              <View style={styles.cardTop}>
+                <View style={[styles.avatarRing, { borderColor: t.color + "40" }]}>
+                  <View style={[styles.avatar, { backgroundColor: t.color }]}>
+                    <Text style={styles.avatarText}>{t.avatar}</Text>
+                  </View>
                 </View>
+                <View style={styles.teacherInfo}>
+                  <View style={styles.nameRow}>
+                    <Text style={[styles.teacherName, { color: colors.foreground }]}>{t.name}</Text>
+                    <View style={[styles.statusBadge, {
+                      backgroundColor: t.status === "active" ? "#48BB7818" : colors.muted,
+                      borderColor: t.status === "active" ? "#48BB7830" : colors.border,
+                    }]}>
+                      <View style={[styles.statusDot, { backgroundColor: t.status === "active" ? "#48BB78" : colors.mutedForeground }]} />
+                      <Text style={[styles.statusText, { color: t.status === "active" ? "#48BB78" : colors.mutedForeground }]}>{t.status}</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.subject, { color: t.color }]}>{t.subject}</Text>
+                  <Text style={[styles.email, { color: colors.mutedForeground }]}>{t.email}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.border} />
               </View>
-              <Text style={[styles.subject, { color: t.color }]}>{t.subject}</Text>
-              <Text style={[styles.email, { color: colors.mutedForeground }]}>{t.email}</Text>
+
               {/* Assigned classes */}
               {t.assignedClasses.length > 0 && (
                 <View style={styles.classPillRow}>
                   {t.assignedClasses.map((c) => (
-                    <View key={c} style={[styles.classPill, { backgroundColor: t.color + "18" }]}>
+                    <View key={c} style={[styles.classPill, { backgroundColor: t.color + "18", borderColor: t.color + "30" }]}>
                       <Text style={[styles.classPillText, { color: t.color }]}>{c}</Text>
                     </View>
                   ))}
                 </View>
               )}
-              <View style={styles.metaRow}>
-                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{t.students} students</Text>
-                <Text style={[styles.metaDot, { color: colors.mutedForeground }]}>•</Text>
-                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{t.courses} courses</Text>
-                {t.rating > 0 && (
-                  <>
-                    <Text style={[styles.metaDot, { color: colors.mutedForeground }]}>•</Text>
-                    <Ionicons name="star" size={11} color="#D69E2E" />
-                    <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{t.rating}</Text>
-                  </>
-                )}
+
+              {/* Stats row */}
+              <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
+                <View style={styles.statItem}>
+                  <Ionicons name="people" size={12} color="#5B9BD5" />
+                  <Text style={[styles.statVal, { color: colors.foreground }]}>{t.students}</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Students</Text>
+                </View>
+                <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
+                <View style={styles.statItem}>
+                  <Ionicons name="book" size={12} color="#9B7BC4" />
+                  <Text style={[styles.statVal, { color: colors.foreground }]}>{t.courses}</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Courses</Text>
+                </View>
+                <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
+                <View style={styles.statItem}>
+                  <Ionicons name="star" size={12} color="#D69E2E" />
+                  <Text style={[styles.statVal, { color: colors.foreground }]}>{t.rating > 0 ? t.rating : "—"}</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Rating</Text>
+                </View>
+                <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
+                <View style={styles.statItem}>
+                  <Ionicons name="time" size={12} color="#48BB78" />
+                  <Text style={[styles.statVal, { color: colors.foreground }]}>{t.experience}</Text>
+                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Exp.</Text>
+                </View>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.border} />
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -157,12 +199,12 @@ export default function AdminTeachers() {
             {selectedTeacher && (
               <>
                 <View style={styles.modalHeader}>
-                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Teacher Details</Text>
+                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Teacher Profile</Text>
                   <TouchableOpacity onPress={() => setSelectedTeacher(null)}>
                     <Ionicons name="close" size={22} color={colors.mutedForeground} />
                   </TouchableOpacity>
                 </View>
-                <View style={styles.modalProfile}>
+                <View style={[styles.modalHero, { backgroundColor: selectedTeacher.color + "12" }]}>
                   <View style={[styles.bigAvatar, { backgroundColor: selectedTeacher.color }]}>
                     <Text style={styles.bigAvatarText}>{selectedTeacher.avatar}</Text>
                   </View>
@@ -170,26 +212,23 @@ export default function AdminTeachers() {
                   <Text style={[styles.modalSubject, { color: selectedTeacher.color }]}>{selectedTeacher.subject}</Text>
                   <Text style={[styles.modalEmail, { color: colors.mutedForeground }]}>{selectedTeacher.email}</Text>
                 </View>
-                {/* Assigned classes */}
-                <View style={styles.assignSection}>
-                  <Text style={[styles.assignLabel, { color: colors.mutedForeground }]}>ASSIGNED CLASSES</Text>
-                  <View style={styles.classPillRow}>
-                    {selectedTeacher.assignedClasses.length === 0
-                      ? <Text style={[styles.noClassText, { color: colors.mutedForeground }]}>No classes assigned yet</Text>
-                      : selectedTeacher.assignedClasses.map((c) => (
-                        <View key={c} style={[styles.classPill, { backgroundColor: selectedTeacher.color + "18" }]}>
+                {selectedTeacher.assignedClasses.length > 0 && (
+                  <View style={styles.assignSection}>
+                    <Text style={[styles.assignLabel, { color: colors.mutedForeground }]}>ASSIGNED CLASSES</Text>
+                    <View style={styles.classPillRow}>
+                      {selectedTeacher.assignedClasses.map((c) => (
+                        <View key={c} style={[styles.classPill, { backgroundColor: selectedTeacher.color + "18", borderColor: selectedTeacher.color + "30" }]}>
                           <Text style={[styles.classPillText, { color: selectedTeacher.color }]}>{c}</Text>
                         </View>
-                      ))
-                    }
+                      ))}
+                    </View>
                   </View>
-                </View>
+                )}
                 {[
                   { label: "Qualification", val: selectedTeacher.qualification },
                   { label: "Experience", val: selectedTeacher.experience },
                   { label: "Joined", val: selectedTeacher.joined },
                   { label: "Total Students", val: `${selectedTeacher.students}` },
-                  { label: "Total Courses", val: `${selectedTeacher.courses}` },
                   { label: "Rating", val: selectedTeacher.rating > 0 ? `${selectedTeacher.rating} / 5.0` : "Not rated yet" },
                 ].map((r) => (
                   <View key={r.label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
@@ -232,10 +271,7 @@ export default function AdminTeachers() {
                 <Ionicons name="close" size={22} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
-            {assignTarget && (
-              <Text style={[styles.assignTeacherName, { color: colors.mutedForeground }]}>{assignTarget.name}</Text>
-            )}
-            <Text style={[styles.assignHint, { color: colors.mutedForeground }]}>Tap a class to assign or remove</Text>
+            {assignTarget && <Text style={[styles.assignHint, { color: colors.mutedForeground }]}>Tap classes to assign or remove for {assignTarget.name}</Text>}
             <View style={styles.classGrid}>
               {ALL_CLASSES.map((cls) => {
                 const assigned = assignTarget?.assignedClasses.includes(cls) ?? false;
@@ -257,6 +293,7 @@ export default function AdminTeachers() {
               style={[styles.submitBtn, { backgroundColor: "#9B7BC4" }]}
               activeOpacity={0.85}
             >
+              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
               <Text style={styles.submitBtnText}>Save Assignment</Text>
             </TouchableOpacity>
           </View>
@@ -293,6 +330,7 @@ export default function AdminTeachers() {
               activeOpacity={0.85}
               disabled={!newName.trim() || !newEmail.trim()}
             >
+              <Ionicons name="person-add" size={16} color="#FFFFFF" />
               <Text style={styles.submitBtnText}>Add Teacher</Text>
             </TouchableOpacity>
           </View>
@@ -304,56 +342,66 @@ export default function AdminTeachers() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
-  title: { flex: 1, fontSize: 20, fontFamily: "Poppins_700Bold" },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
+  headerBanner: { paddingHorizontal: 16, paddingBottom: 30, position: "relative" },
+  dec1: { position: "absolute", width: 220, height: 220, borderRadius: 110, top: -60, right: -50 },
+  dec2: { position: "absolute", width: 130, height: 130, borderRadius: 65, bottom: -30, left: -20 },
+  bannerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, zIndex: 1 },
+  bannerLabel: { color: "rgba(255,255,255,0.7)", fontSize: 9, fontFamily: "Poppins_700Bold", letterSpacing: 1.2, marginBottom: 2 },
+  bannerTitle: { color: "#FFFFFF", fontSize: 22, fontFamily: "Poppins_700Bold" },
+  addBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
   addBtnText: { color: "#FFFFFF", fontSize: 12, fontFamily: "Poppins_700Bold" },
-  summaryRow: { flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1 },
-  summaryItem: { flex: 1, alignItems: "center" },
-  summaryVal: { fontSize: 17, fontFamily: "Poppins_700Bold" },
-  summaryLabel: { fontSize: 9, fontFamily: "Poppins_400Regular" },
+  bannerStrip: { flexDirection: "row", alignItems: "center", borderRadius: 16, padding: 12, zIndex: 1 },
+  stripStat: { flex: 1, alignItems: "center", gap: 2 },
+  stripVal: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
+  stripLabel: { color: "rgba(255,255,255,0.75)", fontSize: 9, fontFamily: "Poppins_400Regular" },
+  stripDiv: { width: 1, height: 28 },
+  waveCut: { position: "absolute", bottom: 0, left: 0, right: 0, height: 14, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   searchWrap: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
-  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
+  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 14, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
   searchInput: { flex: 1, fontSize: 13, fontFamily: "Poppins_400Regular" },
-  scroll: { padding: 16, gap: 0 },
-  teacherCard: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
-  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center", flexShrink: 0 },
+  scroll: { paddingHorizontal: 16, paddingTop: 14, gap: 0 },
+  teacherCard: { borderRadius: 18, borderWidth: 1, marginBottom: 12, overflow: "hidden", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+  cardAccent: { height: 4 },
+  cardBody: { padding: 14 },
+  cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 10 },
+  avatarRing: { width: 54, height: 54, borderRadius: 27, borderWidth: 2, justifyContent: "center", alignItems: "center", flexShrink: 0 },
+  avatar: { width: 46, height: 46, borderRadius: 23, justifyContent: "center", alignItems: "center" },
   avatarText: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
   teacherInfo: { flex: 1, gap: 3 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   teacherName: { flex: 1, fontSize: 13, fontFamily: "Poppins_700Bold" },
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
   statusDot: { width: 5, height: 5, borderRadius: 3 },
   statusText: { fontSize: 9, fontFamily: "Poppins_600SemiBold" },
   subject: { fontSize: 11, fontFamily: "Poppins_500Medium" },
   email: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  classPillRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 2 },
-  classPill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
-  classPillText: { fontSize: 9, fontFamily: "Poppins_600SemiBold" },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  metaText: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  metaDot: { fontSize: 10 },
+  classPillRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginBottom: 10 },
+  classPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+  classPillText: { fontSize: 9, fontFamily: "Poppins_700Bold" },
+  statsRow: { flexDirection: "row", alignItems: "center", borderTopWidth: 1, paddingTop: 10 },
+  statItem: { flex: 1, alignItems: "center", gap: 2 },
+  statVal: { fontSize: 12, fontFamily: "Poppins_700Bold" },
+  statLabel: { fontSize: 9, fontFamily: "Poppins_400Regular" },
+  statDiv: { width: 1, height: 24 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  modalSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, gap: 12, maxHeight: "90%" },
+  modalSheet: { borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, gap: 12, maxHeight: "92%" },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   modalTitle: { fontSize: 17, fontFamily: "Poppins_700Bold" },
-  modalProfile: { alignItems: "center", gap: 4, paddingVertical: 10 },
-  bigAvatar: { width: 64, height: 64, borderRadius: 32, justifyContent: "center", alignItems: "center", marginBottom: 4 },
+  modalHero: { alignItems: "center", gap: 5, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 20 },
+  bigAvatar: { width: 66, height: 66, borderRadius: 33, justifyContent: "center", alignItems: "center", marginBottom: 4 },
   bigAvatarText: { color: "#FFFFFF", fontSize: 22, fontFamily: "Poppins_700Bold" },
   modalName: { fontSize: 17, fontFamily: "Poppins_700Bold" },
   modalSubject: { fontSize: 12, fontFamily: "Poppins_500Medium" },
   modalEmail: { fontSize: 11, fontFamily: "Poppins_400Regular" },
-  assignSection: { gap: 6, marginBottom: 4 },
+  assignSection: { gap: 6 },
   assignLabel: { fontSize: 9, fontFamily: "Poppins_600SemiBold", letterSpacing: 0.8 },
-  noClassText: { fontSize: 11, fontFamily: "Poppins_400Regular" },
   detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1 },
   detailLabel: { fontSize: 12, fontFamily: "Poppins_400Regular" },
   detailVal: { fontSize: 12, fontFamily: "Poppins_600SemiBold" },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 4 },
-  actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 11, borderRadius: 12, borderWidth: 1 },
+  actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 12, borderRadius: 13, borderWidth: 1 },
   actionBtnText: { fontSize: 12, fontFamily: "Poppins_700Bold" },
-  assignTeacherName: { fontSize: 12, fontFamily: "Poppins_500Medium", marginTop: -6 },
-  assignHint: { fontSize: 11, fontFamily: "Poppins_400Regular", marginBottom: 4 },
+  assignHint: { fontSize: 11, fontFamily: "Poppins_400Regular", marginTop: -4 },
   classGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   classOption: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, borderWidth: 1, minWidth: "28%" },
   classOptionText: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
@@ -361,6 +409,6 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 11, fontFamily: "Poppins_600SemiBold", marginLeft: 2 },
   inputRow: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
   input: { fontSize: 13, fontFamily: "Poppins_400Regular" },
-  submitBtn: { borderRadius: 14, paddingVertical: 13, alignItems: "center", marginTop: 4 },
+  submitBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: 14, paddingVertical: 14, marginTop: 4 },
   submitBtnText: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
 });
