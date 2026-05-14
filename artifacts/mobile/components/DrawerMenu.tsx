@@ -18,6 +18,8 @@ import { useApp } from "@/context/AppContext";
 import { ThemeContext } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
 import * as Haptics from "expo-haptics";
+import { VidyaPathLogo } from "@/components/svg/Logo";
+import { DotGrid, CircleRingDeco } from "@/components/svg/DecorativeShapes";
 
 interface DrawerMenuItem {
   icon: keyof typeof Ionicons.glyphMap;

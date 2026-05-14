@@ -19,6 +19,9 @@ import { StatCard } from "@/components/StatCard";
 import { CourseCardSkeleton, LiveCardSkeleton, StatCardSkeleton } from "@/components/Skeleton";
 import { DrawerMenu } from "@/components/DrawerMenu";
 import * as Haptics from "expo-haptics";
+import { ProgressRing } from "@/components/svg/ProgressRing";
+import { HeaderDecoBackground, DotGrid, DecoBlob, WaveDivider } from "@/components/svg/DecorativeShapes";
+import { SubjectIcon } from "@/components/svg/SubjectIcon";
 
 const MOTIVATIONAL = [
   "Success is the sum of small efforts, repeated day in and day out.",
@@ -115,6 +118,7 @@ export default function HomeScreen() {
         {/* Progress Ring Row */}
         {!loading && enrolled.length > 0 && (
           <View style={[styles.progressCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <DecoBlob color={colors.primary} size={120} opacity={0.07} style={styles.progressBlob} />
             <View style={styles.progressCardLeft}>
               <Text style={[styles.progressCardTitle, { color: colors.foreground }]}>Overall Progress</Text>
               <Text style={[styles.progressCardSub, { color: colors.mutedForeground }]}>
@@ -126,11 +130,14 @@ export default function HomeScreen() {
               <Text style={[styles.progressPct, { color: colors.primary }]}>{avgProgress}% complete</Text>
             </View>
             <View style={styles.progressCardRight}>
-              <View style={[styles.ringOuter, { borderColor: colors.muted }]}>
-                <View style={[styles.ringInner, { borderColor: colors.primary }]}>
-                  <Text style={[styles.ringValue, { color: colors.foreground }]}>{avgProgress}%</Text>
-                </View>
-              </View>
+              <ProgressRing
+                progress={avgProgress}
+                size={82}
+                strokeWidth={8}
+                color={colors.primary}
+                trackColor={colors.muted}
+                fontSize={15}
+              />
             </View>
           </View>
         )}
@@ -391,10 +398,8 @@ const styles = StyleSheet.create({
   progressBarBg: { height: 6, borderRadius: 3, overflow: "hidden" },
   progressBarFill: { height: 6, borderRadius: 3 },
   progressPct: { fontSize: 12, fontFamily: "Poppins_600SemiBold" },
+  progressBlob: { position: "absolute", top: -20, right: -20 },
   progressCardRight: { alignItems: "center" },
-  ringOuter: { width: 70, height: 70, borderRadius: 35, borderWidth: 8, justifyContent: "center", alignItems: "center" },
-  ringInner: { width: 54, height: 54, borderRadius: 27, borderWidth: 4, justifyContent: "center", alignItems: "center" },
-  ringValue: { fontSize: 13, fontFamily: "Poppins_700Bold" },
   quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
   quickCard: { width: "30.5%", alignItems: "center", borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 8, gap: 5, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
   quickIcon: { width: 44, height: 44, borderRadius: 13, justifyContent: "center", alignItems: "center" },

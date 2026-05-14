@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +8,9 @@ import { useRouter } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
 import * as Haptics from "expo-haptics";
+import { HeaderDecoBackground, DotGrid, WaveDivider } from "@/components/svg/DecorativeShapes";
+import { MiniBarChart, MiniDonutChart } from "@/components/svg/MiniChart";
+import { SubjectIcon } from "@/components/svg/SubjectIcon";
 
 const ALERTS = [
   { id: "a1", type: "warning", msg: "Vikram Singh attendance dropped below 75%", time: "1 hr ago", icon: "warning", color: "#D69E2E" },
@@ -37,6 +40,7 @@ export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(true);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -45,7 +49,8 @@ export default function AdminDashboard() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Admin Header */}
-      <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: "#9B7BC4", paddingBottom: 20 }]}>
+      <View style={[styles.header, { paddingTop: topPad + 8, paddingBottom: 24, overflow: "hidden" }]}>
+        <HeaderDecoBackground color="#9B7BC4" width={width} height={topPad + 130} />
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.headerRole}>ADMIN PANEL</Text>
@@ -77,6 +82,7 @@ export default function AdminDashboard() {
             </View>
           ))}
         </View>
+        <WaveDivider color={colors.background} height={28} style={{ position: "absolute", bottom: 0, left: 0 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}>
@@ -132,16 +138,27 @@ export default function AdminDashboard() {
 
         {/* Subject Performance */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Subject Overview</Text>
+          <View style={styles.sectionHead}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Subject Overview</Text>
+            <MiniDonutChart
+              segments={SUBJECT_STATS.map((s) => ({ value: s.completion, color: s.color }))}
+              size={44}
+              strokeWidth={8}
+            />
+          </View>
           <View style={[styles.subjectsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             {SUBJECT_STATS.map((s, i) => (
               <View key={s.subject} style={[styles.subjectRow, { borderBottomColor: i === SUBJECT_STATS.length - 1 ? "transparent" : colors.border }]}>
-                <View style={[styles.subjectDot, { backgroundColor: s.color }]} />
-                <Text style={[styles.subjectName, { color: colors.foreground }]}>{s.subject}</Text>
-                <Text style={[styles.subjectStudents, { color: colors.mutedForeground }]}>{s.students} students</Text>
-                <View style={[styles.subjectBarBg, { backgroundColor: colors.muted }]}>
-                  <View style={[styles.subjectBarFill, { backgroundColor: s.color, width: `${s.completion}%` as any }]} />
+                <SubjectIcon subject={s.subject} size={30} color={s.color} />
+                <View style={styles.subjectInfo}>
+                  <Text style={[styles.subjectName, { color: colors.foreground }]}>{s.subject}</Text>
+                  <Text style={[styles.subjectStudents, { color: colors.mutedForeground }]}>{s.students} students</Text>
                 </View>
+                <MiniBarChart
+                  data={[{ value: s.completion, color: s.color }, { value: 100 - s.completion, color: colors.muted }]}
+                  width={50}
+                  height={28}
+                />
                 <Text style={[styles.subjectPct, { color: s.color }]}>{s.completion}%</Text>
               </View>
             ))}
@@ -183,7 +200,7 @@ export default function AdminDashboard() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 16 },
+  header: { paddingHorizontal: 16, backgroundColor: "#9B7BC4" },
   headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
   headerRole: { color: "rgba(255,255,255,0.7)", fontSize: 9, fontFamily: "Poppins_700Bold", letterSpacing: 1.2 },
   headerName: { color: "#FFFFFF", fontSize: 20, fontFamily: "Poppins_700Bold" },
@@ -214,12 +231,10 @@ const styles = StyleSheet.create({
   alertMsg: { fontSize: 12, fontFamily: "Poppins_500Medium", lineHeight: 16 },
   alertTime: { fontSize: 10, fontFamily: "Poppins_400Regular" },
   subjectsCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
-  subjectRow: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderBottomWidth: 1 },
-  subjectDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
-  subjectName: { width: 120, fontSize: 12, fontFamily: "Poppins_500Medium" },
-  subjectStudents: { width: 68, fontSize: 10, fontFamily: "Poppins_400Regular" },
-  subjectBarBg: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
-  subjectBarFill: { height: 6, borderRadius: 3 },
+  subjectRow: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderBottomWidth: 1 },
+  subjectInfo: { flex: 1 },
+  subjectName: { fontSize: 12, fontFamily: "Poppins_500Medium" },
+  subjectStudents: { fontSize: 10, fontFamily: "Poppins_400Regular" },
   subjectPct: { width: 34, fontSize: 11, fontFamily: "Poppins_700Bold", textAlign: "right" },
   activityCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
   activityRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, borderBottomWidth: 1 },

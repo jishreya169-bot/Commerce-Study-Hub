@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +9,9 @@ import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
 import { StatCardSkeleton } from "@/components/Skeleton";
 import * as Haptics from "expo-haptics";
+import { HeaderDecoBackground, DecoBlob, DotGrid, WaveDivider } from "@/components/svg/DecorativeShapes";
+import { SubjectIcon } from "@/components/svg/SubjectIcon";
+import { SmallProgressRing } from "@/components/svg/ProgressRing";
 
 const SCHEDULE = [
   { id: "s1", subject: "Accountancy", topic: "Trial Balance — Chapter 4", time: "10:00 AM", duration: "60 min", students: 42, color: "#5B9BD5", isLive: true },
@@ -34,6 +37,7 @@ export default function TeacherHome() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(true);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -42,7 +46,8 @@ export default function TeacherHome() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: "#48BB78", paddingBottom: 20 }]}>
+      <View style={[styles.header, { paddingTop: topPad + 8, paddingBottom: 24, overflow: "hidden" }]}>
+        <HeaderDecoBackground color="#48BB78" width={width} height={topPad + 130} />
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.headerGreet}>Good morning 👋</Text>
@@ -70,6 +75,7 @@ export default function TeacherHome() {
             </View>
           ))}
         </View>
+        <WaveDivider color={colors.background} height={28} style={{ position: "absolute", bottom: 0, left: 0 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}>
@@ -179,7 +185,7 @@ export default function TeacherHome() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 16 },
+  header: { paddingHorizontal: 16, backgroundColor: "#48BB78" },
   headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
   headerGreet: { color: "rgba(255,255,255,0.8)", fontSize: 12, fontFamily: "Poppins_400Regular" },
   headerName: { color: "#FFFFFF", fontSize: 20, fontFamily: "Poppins_700Bold" },

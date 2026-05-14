@@ -9,6 +9,9 @@ import { useRouter } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 import { useAuth, UserRole } from "@/context/AuthContext";
 import * as Haptics from "expo-haptics";
+import { LoginIllustration, TeacherIllustration, AdminIllustration } from "@/components/svg/LoginIllustration";
+import { VidyaPathLogo } from "@/components/svg/Logo";
+import { DotGrid } from "@/components/svg/DecorativeShapes";
 
 const ROLES: { key: UserRole; label: string; icon: keyof typeof Ionicons.glyphMap; color: string; desc: string }[] = [
   { key: "student", label: "Student", icon: "school", color: "#5B9BD5", desc: "Class 11–12 Commerce" },
@@ -68,13 +71,20 @@ export default function LoginScreen() {
       >
         {/* Logo */}
         <View style={styles.logoRow}>
-          <View style={[styles.logoCircle, { backgroundColor: roleColor }]}>
-            <Ionicons name="school" size={28} color="#FFFFFF" />
-          </View>
+          <VidyaPathLogo size={48} color={roleColor} />
           <View>
             <Text style={[styles.appName, { color: colors.foreground }]}>VidyaPath</Text>
             <Text style={[styles.appSub, { color: colors.mutedForeground }]}>Class 11–12 LMS</Text>
           </View>
+        </View>
+
+        {/* Illustration */}
+        <View style={styles.illustrationWrap}>
+          <DotGrid color={roleColor} cols={7} rows={3} gap={14} opacity={0.2} style={styles.dotGridLeft} />
+          {selectedRole === "student" && <LoginIllustration color={roleColor} size={220} />}
+          {selectedRole === "teacher" && <TeacherIllustration color={roleColor} size={200} />}
+          {selectedRole === "admin" && <AdminIllustration color={roleColor} size={200} />}
+          <DotGrid color={roleColor} cols={7} rows={3} gap={14} opacity={0.2} style={styles.dotGridRight} />
         </View>
 
         {/* Headline */}
@@ -195,10 +205,12 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: 20, gap: 0 },
-  logoRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 24 },
-  logoCircle: { width: 52, height: 52, borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 20 },
   appName: { fontSize: 22, fontFamily: "Poppins_700Bold" },
   appSub: { fontSize: 11, fontFamily: "Poppins_400Regular" },
+  illustrationWrap: { alignItems: "center", justifyContent: "center", marginBottom: 18, position: "relative", height: 160 },
+  dotGridLeft: { position: "absolute", left: 0, top: 10 },
+  dotGridRight: { position: "absolute", right: 0, top: 10 },
   headline: { fontSize: 26, fontFamily: "Poppins_700Bold", marginBottom: 4 },
   subline: { fontSize: 13, fontFamily: "Poppins_400Regular", marginBottom: 22, lineHeight: 20 },
   roleRow: { flexDirection: "row", gap: 8, marginBottom: 20 },
