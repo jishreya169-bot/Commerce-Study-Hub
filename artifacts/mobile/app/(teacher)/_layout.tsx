@@ -1,16 +1,11 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useContext } from "react";
-import { Platform, StyleSheet, View, BlurView as RNBlurView } from "react-native";
-import { BlurView } from "expo-blur";
+import React from "react";
+import { Platform, StyleSheet, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
-import { ThemeContext } from "@/context/ThemeContext";
 
 export default function TeacherTabLayout() {
   const colors = useColors();
-  const { theme } = useContext(ThemeContext);
-  const isDark = theme === "dark";
-  const isIOS = Platform.OS === "ios";
 
   return (
     <Tabs
@@ -20,7 +15,7 @@ export default function TeacherTabLayout() {
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : colors.card,
+          backgroundColor: colors.card,
           borderTopWidth: 1,
           borderTopColor: colors.border,
           elevation: 0,
@@ -40,9 +35,21 @@ export default function TeacherTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="live"
+        options={{
+          title: "Live",
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ position: "relative" }}>
+              <Ionicons name="radio-outline" size={21} color={color} />
+              {focused && <View style={{ position: "absolute", top: -2, right: -4, width: 6, height: 6, borderRadius: 3, backgroundColor: "#E53E3E" }} />}
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="classes"
         options={{
-          title: "Classes",
+          title: "Courses",
           tabBarIcon: ({ color }) => <Ionicons name="book-outline" size={21} color={color} />,
         }}
       />
