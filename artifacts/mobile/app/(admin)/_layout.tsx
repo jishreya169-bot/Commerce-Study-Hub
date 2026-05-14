@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useContext } from "react";
+import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 
@@ -53,6 +53,20 @@ export default function AdminTabLayout() {
         options={{
           title: "Courses",
           tabBarIcon: ({ color }) => <Ionicons name="library-outline" size={21} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="reports"
+        options={{
+          title: "Reports",
+          tabBarIcon: ({ color }) => <Ionicons name="bar-chart-outline" size={21} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="fees"
+        options={{
+          title: "Fees",
+          tabBarIcon: ({ color }) => <Ionicons name="card-outline" size={21} color={color} />,
         }}
       />
       <Tabs.Screen

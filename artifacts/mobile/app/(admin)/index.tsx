@@ -93,8 +93,8 @@ export default function AdminDashboard() {
             { label: "Students", icon: "people", color: "#5B9BD5", route: "/(admin)/students" },
             { label: "Courses", icon: "library", color: "#9B7BC4", route: "/(admin)/courses" },
             { label: "Settings", icon: "settings", color: "#7B8EBF", route: "/(admin)/settings" },
-            { label: "Reports", icon: "bar-chart", color: "#D69E2E", route: "/(admin)/settings" },
-            { label: "Fees", icon: "card", color: "#BF7B5B", route: "/(admin)/settings" },
+            { label: "Reports", icon: "bar-chart", color: "#D69E2E", route: "/(admin)/reports" },
+            { label: "Fees", icon: "card", color: "#BF7B5B", route: "/(admin)/fees" },
           ].map((q) => (
             <TouchableOpacity
               key={q.label}
