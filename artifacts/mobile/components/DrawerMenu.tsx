@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { ThemeContext } from "@/context/ThemeContext";
+import { useAuth } from "@/context/AuthContext";
 import * as Haptics from "expo-haptics";
 
 interface DrawerMenuItem {
@@ -38,6 +39,7 @@ export function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
   const router = useRouter();
   const { user, courses, tests, doubts, notes, language, setLanguage } = useApp();
   const { theme, toggleTheme } = useContext(ThemeContext);
+  const { logout } = useAuth();
   const { width } = useWindowDimensions();
 
   const slideAnim = useRef(new Animated.Value(-320)).current;
@@ -225,11 +227,23 @@ export function DrawerMenu({ visible, onClose }: DrawerMenuProps) {
               <Ionicons name="chevron-forward" size={14} color={colors.border} />
             </TouchableOpacity>
             {/* Downloads */}
-            <TouchableOpacity style={[styles.navRow, { borderBottomColor: "transparent" }]} activeOpacity={0.7}>
+            <TouchableOpacity style={[styles.navRow, { borderBottomColor: colors.border }]} activeOpacity={0.7}>
               <View style={[styles.navIcon, { backgroundColor: colors.primary + "18" }]}>
                 <Ionicons name="download" size={16} color={colors.primary} />
               </View>
               <Text style={[styles.navLabel, { color: colors.foreground }]}>Downloads</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.border} />
+            </TouchableOpacity>
+            {/* Sign Out */}
+            <TouchableOpacity
+              style={[styles.navRow, { borderBottomColor: "transparent" }]}
+              activeOpacity={0.7}
+              onPress={async () => { onClose(); await logout(); }}
+            >
+              <View style={[styles.navIcon, { backgroundColor: "#E53E3E18" }]}>
+                <Ionicons name="log-out-outline" size={16} color="#E53E3E" />
+              </View>
+              <Text style={[styles.navLabel, { color: "#E53E3E" }]}>Sign Out</Text>
               <Ionicons name="chevron-forward" size={14} color={colors.border} />
             </TouchableOpacity>
           </View>

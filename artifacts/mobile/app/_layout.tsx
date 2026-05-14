@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/poppins";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -16,24 +16,70 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
+function AuthRedirect() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const inLoginScreen = segments[0] === "login";
+    const inTeacherGroup = segments[0] === "(teacher)";
+    const inAdminGroup = segments[0] === "(admin)";
+    const inStudentGroup = segments[0] === "(tabs)" || segments[0] === undefined;
+
+    if (!isAuthenticated) {
+      if (!inLoginScreen) router.replace("/login");
+      return;
+    }
+
+    // User is authenticated — redirect to correct dashboard if on wrong one
+    const role = user?.role;
+    if (inLoginScreen) {
+      if (role === "teacher") router.replace("/(teacher)/");
+      else if (role === "admin") router.replace("/(admin)/");
+      else router.replace("/(tabs)/");
+      return;
+    }
+
+    if (role === "teacher" && !inTeacherGroup) {
+      router.replace("/(teacher)/");
+    } else if (role === "admin" && !inAdminGroup) {
+      router.replace("/(admin)/");
+    } else if (role === "student" && (inTeacherGroup || inAdminGroup)) {
+      router.replace("/(tabs)/");
+    }
+  }, [isAuthenticated, isLoading, user, segments]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="course/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
-      <Stack.Screen name="lecture/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
-      <Stack.Screen name="live/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
-      <Stack.Screen name="live-session/[id]" options={{ headerShown: false, animation: "slide_from_bottom" }} />
-      <Stack.Screen name="recorded/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
-      <Stack.Screen name="test/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
-      <Stack.Screen name="doubts" options={{ headerShown: false, animation: "slide_from_right" }} />
-      <Stack.Screen name="notes" options={{ headerShown: false, animation: "slide_from_right" }} />
-    </Stack>
+    <>
+      <AuthRedirect />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="login" options={{ headerShown: false, animation: "fade" }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(teacher)" options={{ headerShown: false }} />
+        <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+        <Stack.Screen name="course/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+        <Stack.Screen name="lecture/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+        <Stack.Screen name="live/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+        <Stack.Screen name="live-session/[id]" options={{ headerShown: false, animation: "slide_from_bottom" }} />
+        <Stack.Screen name="recorded/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+        <Stack.Screen name="test/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
+        <Stack.Screen name="doubts" options={{ headerShown: false, animation: "slide_from_right" }} />
+        <Stack.Screen name="notes" options={{ headerShown: false, animation: "slide_from_right" }} />
+      </Stack>
+    </>
   );
 }
 
@@ -57,15 +103,17 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <ThemeProvider>
-          <QueryClientProvider client={queryClient}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <KeyboardProvider>
-                <AppProvider>
-                  <RootLayoutNav />
-                </AppProvider>
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </QueryClientProvider>
+          <AuthProvider>
+            <QueryClientProvider client={queryClient}>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <KeyboardProvider>
+                  <AppProvider>
+                    <RootLayoutNav />
+                  </AppProvider>
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </QueryClientProvider>
+          </AuthProvider>
         </ThemeProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
