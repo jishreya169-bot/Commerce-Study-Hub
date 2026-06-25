@@ -3,7 +3,7 @@
   "expo": {
     "name": "Webvibezzz-Acadamy",
     "slug": "webvibezzz",
-    "version": "1.0.10",
+    "version": "1.0.11",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "webvibezzzacadamy",
@@ -16,13 +16,13 @@
     },
     "ios": {
       "bundleIdentifier": "com.webvibezzz.academy",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "supportsTablet": false,
       "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "package": "com.webvibezzz.academy",
-      "versionCode": 10,
+      "versionCode": 11,
       "googleServicesFile": "./google-services.json",
       "notification": {
         "icon": "./assets/images/icon.png",
