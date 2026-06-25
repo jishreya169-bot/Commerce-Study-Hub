@@ -1,277 +1,495 @@
 import React, { useState, useEffect } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, useWindowDimensions,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, useWindowDimensions, TextInput
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { useColors } from "@/hooks/useColors";
+import { useRouter, useFocusEffect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import * as Haptics from "expo-haptics";
+import { turso } from "../../lib/turso";
+import Animated, { FadeInDown, FadeInRight } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
+import { BlurView } from "expo-blur";
 
-const ADMIN_COLOR = "#9B7BC4";
-
-const ALERTS = [
-  { id: "a1", msg: "Vikram Singh attendance dropped below 75%", time: "1 hr ago", icon: "warning", color: "#D69E2E" },
-  { id: "a2", msg: "New course 'Mathematics XII' pending approval", time: "2 hr ago", icon: "information-circle", color: "#5B9BD5" },
-  { id: "a3", msg: "Prof. Sunita Rao joined as new teacher", time: "Yesterday", icon: "person-add", color: "#48BB78" },
-  { id: "a4", msg: "3 students have unpaid fees this month", time: "Yesterday", icon: "card", color: "#E53E3E" },
-];
-
-const RECENT_ACTIVITY = [
-  { id: "r1", user: "Priya Sharma", action: "completed Trial Balance lecture", time: "5 min ago", color: "#5B9BD5", icon: "school" },
-  { id: "r2", user: "Prof. Amit Sharma", action: "posted answer in Doubt Forum", time: "20 min ago", color: "#48BB78", icon: "person-circle" },
-  { id: "r3", user: "Rahul Mehta", action: "scored 90% in Economics Test 3", time: "30 min ago", color: "#5BAD9B", icon: "trophy" },
-  { id: "r4", user: "Ananya Kapoor", action: "enrolled in Class 12 Accountancy", time: "1 hr ago", color: "#9B7BC4", icon: "book" },
-  { id: "r5", user: "System", action: "Weekly backup completed successfully", time: "2 hr ago", color: "#48BB78", icon: "cloud-done" },
-];
-
-const SUBJECT_STATS = [
-  { subject: "Accountancy", students: 77, completion: 72, color: "#5B9BD5" },
-  { subject: "Economics", students: 38, completion: 55, color: "#5BAD9B" },
-  { subject: "Business Studies", students: 45, completion: 68, color: "#7B8EBF" },
-  { subject: "Mathematics", students: 30, completion: 61, color: "#9B7BC4" },
-  { subject: "English", students: 52, completion: 80, color: "#BF7B5B" },
-];
-
+// Notifications will be dynamically loaded via state
+// ── COMPONENT ─────────────────────────────────────────────────
 const QUICK_ACTIONS = [
-  { label: "Teachers", icon: "person-circle", color: "#48BB78", route: "/(admin)/teachers", count: "12" },
-  { label: "Students", icon: "people", color: "#5B9BD5", route: "/(admin)/students", count: "156" },
-  { label: "Courses", icon: "library", color: "#9B7BC4", route: "/(admin)/settings", count: "8" },
-  { label: "Fees", icon: "card", color: "#D69E2E", route: "/(admin)/fees", count: "3 due" },
-  { label: "Reports", icon: "bar-chart", color: "#BF7B5B", route: "/(admin)/settings", count: "" },
-  { label: "Settings", icon: "settings", color: "#7B8EBF", route: "/(admin)/settings", count: "" },
+  { label: "Students", icon: "people", route: "/(admin)/students", colors: ["#DBEAFE", "#BFDBFE"], iconColor: "#2563EB" },
+  { label: "Teachers", icon: "school", route: "/(admin)/teachers", colors: ["#F3E8FF", "#E9D5FF"], iconColor: "#7C3AED" },
+  { label: "Classes", icon: "grid", route: "/(admin)/courses", colors: ["#FCE7F3", "#FBCFE8"], iconColor: "#DB2777" },
+  { label: "Timetable", icon: "time", route: "/(admin)/timetable", colors: ["#E0F2FE", "#BAE6FD"], iconColor: "#0284C7" },
+  { label: "Broadcasts", icon: "megaphone", route: "/(admin)/communication", colors: ["#FDE68A", "#FCD34D"], iconColor: "#D97706" },
+  { label: "Library", icon: "library", route: "/(admin)/library", colors: ["#D1FAE5", "#A7F3D0"], iconColor: "#059669" },
+  { label: "Attendance", icon: "calendar-outline", route: "/(admin)/attendance", colors: ["#FEF3C7", "#FDE68A"], iconColor: "#D97706" },
+  { label: "Reports", icon: "bar-chart", route: "/(admin)/reports", colors: ["#E0E7FF", "#C7D2FE"], iconColor: "#4F46E5" },
 ];
 
 export default function AdminDashboard() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, logout } = useAuth();
-  const { width } = useWindowDimensions();
-  const [loading, setLoading] = useState(true);
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const { user } = useAuth();
+  const topPad = Platform.OS === "web" ? 50 : insets.top;
 
-  useEffect(() => { const t = setTimeout(() => setLoading(false), 700); return () => clearTimeout(t); }, []);
+  const [stats, setStats] = useState({ students: 0, teachers: 0, courses: 0 });
+  const [defaulters, setDefaulters] = useState<any[]>([]);
+  const [recentStudents, setRecentStudents] = useState<any[]>([]);
+  const [topStudents, setTopStudents] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
 
-  const maxCompletion = Math.max(...SUBJECT_STATS.map((s) => s.students));
+  useFocusEffect(
+    React.useCallback(() => {
+    const fetchStats = async () => {
+      try {
+        const studentRes = await turso.execute("SELECT COUNT(*) FROM users WHERE role = 'student'");
+        const teacherRes = await turso.execute("SELECT COUNT(*) FROM users WHERE role = 'teacher'");
+        const courseRes = await turso.execute("SELECT COUNT(*) FROM classes");
+        
+        setStats({
+          students: (studentRes.rows[0][0] as number) || 0,
+          teachers: (teacherRes.rows[0][0] as number) || 0,
+          courses: (courseRes.rows[0][0] as number) || 0,
+        });
+
+        // Fetch recent enrollments
+        const recentRes = await turso.execute("SELECT id, name, batch, createdAt FROM users WHERE role = 'student' ORDER BY createdAt DESC LIMIT 3");
+        const recents = recentRes.rows.map(r => {
+          const d = new Date(r[3] as string);
+          let timeLabel = d.toLocaleDateString();
+          if (new Date().toDateString() === d.toDateString()) timeLabel = "Today";
+          return {
+            id: r[0] as string,
+            student: r[1] as string,
+            course: r[2] as string || "N/A",
+            time: timeLabel,
+            avatar: (r[1] as string).slice(0, 2).toUpperCase(),
+            color: "#0EA5E9"
+          };
+        });
+        setRecentStudents(recents);
+
+        // Fetch fee defaulters
+        const feeRes = await turso.execute(`
+          SELECT f.id, u.name, u.batch, f.totalAmount, f.paidAmount, f.nextDueDate 
+          FROM fees f 
+          JOIN users u ON f.studentId = u.id 
+          WHERE f.status != 'completed'
+        `);
+        
+        const now = new Date().getTime();
+        const defs: any[] = [];
+        
+        feeRes.rows.forEach(r => {
+          const dueStr = r[5] as string;
+          const due = new Date(dueStr).getTime();
+          const amtDue = (r[3] as number) - (r[4] as number);
+          
+          if (now > due && amtDue > 0) {
+            const diffDays = Math.ceil(Math.abs(now - due) / (1000 * 60 * 60 * 24));
+            defs.push({
+              id: r[0] as string,
+              student: r[1] as string,
+              course: r[2] as string || "N/A",
+              amount: "₹" + amtDue,
+              due: "Overdue by " + diffDays + " days",
+              avatar: (r[1] as string).slice(0, 2).toUpperCase(),
+              color: "#EF4444"
+            });
+          }
+        });
+        
+        setDefaulters(defs.slice(0, 3)); // Show top 3
+        
+        const newAlerts = [];
+        if (defs.length > 0) {
+          newAlerts.push({
+            id: "alert1",
+            title: "Pending Fee Reminders",
+            desc: `${defs.length} student(s) have overdue fees.`,
+            icon: "warning",
+            color: "#EF4444"
+          });
+        }
+        try {
+          const doubtRes = await turso.execute("SELECT COUNT(*) FROM doubts WHERE status != 'resolved'");
+          const pendingDoubts = doubtRes.rows[0][0] as number;
+          if (pendingDoubts > 0) {
+            newAlerts.push({
+              id: "alert2",
+              title: "Unresolved Doubts",
+              desc: `${pendingDoubts} doubt(s) require attention.`,
+              icon: "help-circle",
+              color: "#F59E0B"
+            });
+          }
+        } catch(e) {}
+        
+        if (newAlerts.length === 0) {
+          newAlerts.push({
+            id: "alert-ok",
+            title: "All Good!",
+            desc: "No important alerts at the moment.",
+            icon: "checkmark-circle",
+            color: "#10B981"
+          });
+        }
+        setAlerts(newAlerts);
+        
+        // Fetch top students
+        const topRes = await turso.execute(`
+          SELECT u.id, u.name, SUM(r.marksObtained) as obtained, SUM(e.totalMarks) as total
+          FROM users u
+          JOIN results r ON u.id = r.studentId
+          JOIN exams e ON r.examId = e.id
+          GROUP BY u.id
+          ORDER BY (SUM(r.marksObtained) * 100.0 / SUM(e.totalMarks)) DESC
+          LIMIT 4
+        `);
+        
+        const topColors = ["#EC4899", "#3B82F6", "#10B981", "#8B5CF6"];
+        const tops = topRes.rows.map((r, i) => {
+          const obt = r[2] as number;
+          const tot = r[3] as number;
+          const percentage = tot > 0 ? Math.round((obt / tot) * 100) : 0;
+          return {
+            id: r[0] as string,
+            name: r[1] as string,
+            score: percentage + "%",
+            avatar: (r[1] as string).slice(0, 2).toUpperCase(),
+            color: topColors[i % topColors.length]
+          };
+        });
+        setTopStudents(tops);
+
+      } catch (e) {
+        console.error("Stats Error:", e);
+      }
+    };
+    fetchStats();
+  }, [])
+  );
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-
-      {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: ADMIN_COLOR }]}>
-        <View style={styles.headerDeco1} />
-        <View style={styles.headerDeco2} />
+    <View style={styles.container}>
+      
+      {/* ── COLORFUL HEADER ── */}
+      <LinearGradient 
+        colors={["#0EA5E9", "#2563EB"]} 
+        style={[styles.header, { paddingTop: topPad + 10 }]}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.decoCircle1} />
+        <View style={styles.decoCircle2} />
 
         <View style={styles.headerTop}>
-          <View style={{ flex: 1 }}>
-            <View style={[styles.rolePill, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
-              <View style={styles.roleDot} />
-              <Text style={styles.roleText}>ADMIN PANEL</Text>
-            </View>
-            <Text style={styles.headerName}>{user?.name ?? "Administrator"}</Text>
-            <Text style={styles.headerSub}>VidyaPath Management System</Text>
+          <View>
+            <Text style={styles.greeting}>Welcome Back 👋</Text>
+            <Text style={styles.adminName}>{user?.name ?? "Administrator"}</Text>
           </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={[styles.notifBtn, { backgroundColor: "rgba(255,255,255,0.2)" }]} activeOpacity={0.8}>
-              <Ionicons name="notifications" size={17} color="#FFFFFF" />
-              <View style={styles.notifDot} />
+          
+          {/* Header Right Actions */}
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={() => { Haptics.selectionAsync(); router.push("/(admin)/communication"); }} activeOpacity={0.7}>
+              <BlurView intensity={30} tint="light" style={styles.activityBtn}>
+                <Ionicons name="notifications" size={22} color="#FFFFFF" />
+                <View style={styles.notificationDot} />
+              </BlurView>
             </TouchableOpacity>
-            <View style={styles.headerAvatar}>
-              <Text style={styles.headerAvatarText}>{user?.avatar ?? "A"}</Text>
-            </View>
+
+            <TouchableOpacity onPress={() => router.push("/(admin)/profile")} style={styles.avatarWrap}>
+              {user?.avatar === 'boy' ? (
+                <Image source={{ uri: "https://avatar.iran.liara.run/public/boy" }} style={styles.avatarImage} contentFit="cover" transition={200} />
+              ) : user?.avatar === 'girl' ? (
+                <Image source={{ uri: "https://avatar.iran.liara.run/public/girl" }} style={styles.avatarImage} contentFit="cover" transition={200} />
+              ) : user?.avatar && user.avatar.length > 2 ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatarImage} contentFit="cover" transition={200} />
+              ) : (
+                <View style={[styles.avatarImage, { backgroundColor: "#2563EB", justifyContent: "center", alignItems: "center" }]}>
+                  <Text style={{ color: "#FFF", fontSize: 18, fontFamily: "Poppins_700Bold" }}>{user?.avatar || user?.name?.charAt(0) || "A"}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
+      </LinearGradient>
 
-        {/* KPI strip */}
-        <View style={styles.kpiStrip}>
-          {[
-            { val: "156", label: "Students", icon: "people", color: "#FFFFFF" },
-            { val: "12", label: "Teachers", icon: "person-circle", color: "#FFFFFF" },
-            { val: "8", label: "Courses", icon: "book", color: "#FFFFFF" },
-            { val: "23", label: "Online Now", icon: "radio", color: "#FBBF24" },
-          ].map((s, i) => (
-            <React.Fragment key={s.label}>
-              {i > 0 && <View style={styles.kpiDiv} />}
-              <View style={styles.kpiItem}>
-                <Ionicons name={s.icon as any} size={12} color={s.color === "#FFFFFF" ? "rgba(255,255,255,0.8)" : s.color} />
-                <Text style={[styles.kpiVal, { color: s.color }]}>{s.val}</Text>
-                <Text style={styles.kpiLabel}>{s.label}</Text>
-              </View>
-            </React.Fragment>
-          ))}
-        </View>
-
-        <View style={styles.waveWrap}>
-          <View style={[styles.wave, { backgroundColor: colors.background }]} />
+      {/* Floating Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={20} color="#64748B" />
+          <TextInput 
+            style={styles.searchInput}
+            placeholder="Search students, classes, or fee records..."
+            placeholderTextColor="#94A3B8"
+            editable={false}
+          />
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}>
-
-        {/* Quick Actions */}
-        <View style={styles.qaGrid}>
-          {QUICK_ACTIONS.map((q) => (
-            <TouchableOpacity
-              key={q.label}
-              onPress={() => { Haptics.selectionAsync(); router.push(q.route as any); }}
-              style={[styles.qaCard, { backgroundColor: colors.card, borderColor: colors.border, width: (width - 48) / 3 - 2 }]}
-              activeOpacity={0.82}
-            >
-              <View style={[styles.qaIconWrap, { backgroundColor: q.color + "15" }]}>
-                <Ionicons name={q.icon as any} size={22} color={q.color} />
-              </View>
-              <Text style={[styles.qaLabel, { color: colors.foreground }]}>{q.label}</Text>
-              {q.count ? (
-                <View style={[styles.qaCount, { backgroundColor: q.color + "18" }]}>
-                  <Text style={[styles.qaCountText, { color: q.color }]}>{q.count}</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        
+        {/* ── KPI SCROLL ── */}
+        <View style={styles.kpiSection}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.kpiScroll}>
+            {[
+              { title: "Total Students", val: stats.students || 0, icon: "people", color: "#3B82F6", bg: "#EFF6FF", trend: "+12%" },
+              { title: "Active Teachers", val: stats.teachers || 0, icon: "school", color: "#8B5CF6", bg: "#F5F3FF", trend: "0%" },
+              { title: "Total Classes", val: stats.courses || 0, icon: "grid", color: "#EC4899", bg: "#FDF2F8", trend: "+2" },
+              { title: "Revenue (MTD)", val: "₹1.2L", icon: "wallet", color: "#10B981", bg: "#ECFDF5", trend: "+5%" },
+            ].map((k, i) => (
+              <Animated.View key={k.title} entering={FadeInRight.delay(100 + i * 100).springify()} style={[styles.kpiCard, { borderTopColor: k.color, borderTopWidth: 4 }]}>
+                <View style={styles.kpiTop}>
+                  <View style={[styles.kpiIconWrap, { backgroundColor: k.bg }]}>
+                    <Ionicons name={k.icon as any} size={22} color={k.color} />
+                  </View>
+                  <View style={[styles.kpiBadge, { backgroundColor: k.trend.includes("+") ? "#D1FAE5" : "#F1F5F9" }]}>
+                    <Text style={[styles.kpiBadgeText, { color: k.trend.includes("+") ? "#059669" : "#64748B" }]}>{k.trend}</Text>
+                  </View>
                 </View>
-              ) : null}
-            </TouchableOpacity>
-          ))}
+                <Text style={styles.kpiVal}>{k.val}</Text>
+                <Text style={styles.kpiTitle}>{k.title}</Text>
+              </Animated.View>
+            ))}
+          </ScrollView>
         </View>
 
-        {/* Alerts */}
-        <View style={styles.section}>
+        {/* ── QUICK ACTIONS ── */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
           <View style={styles.sectionHead}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Alerts</Text>
-            <View style={[styles.alertCountBadge, { backgroundColor: "#E53E3E" }]}>
-              <Text style={styles.alertCountText}>{ALERTS.length}</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Dashboard Hub</Text>
           </View>
-          <View style={[styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {ALERTS.map((a, i) => (
-              <TouchableOpacity
-                key={a.id}
-                style={[styles.alertRow, { borderBottomColor: i === ALERTS.length - 1 ? "transparent" : colors.border, borderLeftColor: a.color, borderLeftWidth: 3 }]}
-                activeOpacity={0.75}
-                onPress={() => Haptics.selectionAsync()}
-              >
-                <View style={[styles.alertIcon, { backgroundColor: a.color + "18" }]}>
-                  <Ionicons name={a.icon as any} size={14} color={a.color} />
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={[styles.alertMsg, { color: colors.foreground }]}>{a.msg}</Text>
-                  <Text style={[styles.alertTime, { color: colors.mutedForeground }]}>{a.time}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={14} color={colors.border} />
+          <View style={styles.qaGrid}>
+            {QUICK_ACTIONS.map((q, i) => (
+              <TouchableOpacity key={i} onPress={() => { Haptics.selectionAsync(); router.push(q.route as any); }} style={styles.qaCardWrapper}>
+                <LinearGradient colors={q.colors as any} style={styles.qaCard} start={{x:0, y:0}} end={{x:1, y:1}}>
+                  <View style={styles.qaIconWrap}>
+                    <Ionicons name={q.icon as any} size={24} color={q.iconColor} />
+                  </View>
+                  <Text style={[styles.qaLabel, { color: q.iconColor }]}>{q.label}</Text>
+                </LinearGradient>
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Subject Overview */}
-        <View style={styles.section}>
+        {/* ── TOP STUDENTS ── */}
+        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
           <View style={styles.sectionHead}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Subject Overview</Text>
-            <View style={[styles.sectionBadge, { backgroundColor: ADMIN_COLOR + "18" }]}>
-              <Text style={[styles.sectionBadgeText, { color: ADMIN_COLOR }]}>{SUBJECT_STATS.length} subjects</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Top Students</Text>
+            <TouchableOpacity><Text style={styles.seeAll}>Leaderboard</Text></TouchableOpacity>
           </View>
-          <View style={[styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {SUBJECT_STATS.map((s, i) => (
-              <View key={s.subject} style={[styles.subjectRow, { borderBottomColor: i === SUBJECT_STATS.length - 1 ? "transparent" : colors.border }]}>
-                <View style={[styles.subjectDot, { backgroundColor: s.color }]} />
-                <View style={{ flex: 1, gap: 5 }}>
-                  <View style={styles.subjectHead}>
-                    <Text style={[styles.subjectName, { color: colors.foreground }]}>{s.subject}</Text>
-                    <Text style={[styles.subjectPct, { color: s.color }]}>{s.completion}%</Text>
-                  </View>
-                  <View style={[styles.subjectBg, { backgroundColor: colors.muted }]}>
-                    <View style={[styles.subjectFill, { backgroundColor: s.color, width: `${s.completion}%` as any }]} />
-                  </View>
-                  <Text style={[styles.subjectStudents, { color: colors.mutedForeground }]}>{s.students} students enrolled</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.studentScroll}>
+            {topStudents.length === 0 && (
+              <View style={{ padding: 10, alignItems: "center" }}><Text style={{ color: "#94A3B8" }}>No exams recorded yet</Text></View>
+            )}
+            {topStudents.map((s, i) => (
+              <View key={s.id} style={styles.studentCard}>
+                <View style={[styles.studentAvatar, { backgroundColor: s.color }]}>
+                  <Text style={styles.studentAvatarText}>{s.avatar}</Text>
+                </View>
+                <Text style={styles.studentName} numberOfLines={1}>{s.name}</Text>
+                <View style={[styles.scorePill, { backgroundColor: s.color + "15" }]}>
+                  <Text style={[styles.scoreText, { color: s.color }]}>{s.score}</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </Animated.View>
+
+        {/* ── PENDING FEE FOLLOW-UPS ── */}
+        <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Pending Fee Follow-ups</Text>
+            <TouchableOpacity onPress={() => router.push("/(admin)/finance")}><Text style={styles.seeAll}>View Finance</Text></TouchableOpacity>
+          </View>
+          <View style={styles.cardBlock}>
+            {defaulters.length === 0 && (
+              <View style={{ padding: 10, alignItems: "center" }}><Text style={{ color: "#94A3B8" }}>No pending dues!</Text></View>
+            )}
+            {defaulters.map((f, i) => (
+              <View key={f.id} style={[styles.feeItem, i === defaulters.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={[styles.feeAvatar, { backgroundColor: f.color + "15" }]}>
+                  <Text style={[styles.feeAvatarText, { color: f.color }]}>{f.avatar}</Text>
+                </View>
+                <View style={styles.feeContent}>
+                  <Text style={styles.feeName}>{f.student}</Text>
+                  <Text style={styles.feeCourse}>{f.course}</Text>
+                  <Text style={[styles.feeDue, { color: f.color }]}>{f.due}</Text>
+                </View>
+                <View style={styles.feeRight}>
+                  <Text style={styles.feeAmount}>{f.amount}</Text>
+                  <TouchableOpacity style={styles.remindBtn} onPress={() => Haptics.selectionAsync()}>
+                    <Ionicons name="notifications" size={14} color="#FFFFFF" />
+                    <Text style={styles.remindText}>Remind</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))}
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Recent Activity */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Recent Activity</Text>
-          <View style={[styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {RECENT_ACTIVITY.map((a, i) => (
-              <View key={a.id} style={[styles.activityRow, { borderBottomColor: i === RECENT_ACTIVITY.length - 1 ? "transparent" : colors.border }]}>
-                <View style={[styles.activityIcon, { backgroundColor: a.color + "18" }]}>
-                  <Ionicons name={a.icon as any} size={14} color={a.color} />
+        {/* ── RECENT ENROLLMENTS ── */}
+        <Animated.View entering={FadeInDown.delay(500).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Recent Enrollments</Text>
+            <TouchableOpacity><Text style={styles.seeAll}>View All</Text></TouchableOpacity>
+          </View>
+          <View style={styles.cardBlock}>
+            {recentStudents.length === 0 && (
+              <View style={{ padding: 10, alignItems: "center" }}><Text style={{ color: "#94A3B8" }}>No recent enrollments</Text></View>
+            )}
+            {recentStudents.map((e, i) => (
+              <View key={e.id} style={[styles.enrollItem, i === recentStudents.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={[styles.enrollAvatar, { backgroundColor: e.color + "15" }]}>
+                  <Text style={[styles.enrollAvatarText, { color: e.color }]}>{e.avatar}</Text>
                 </View>
-                <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={[styles.activityUser, { color: colors.foreground }]}>{a.user}</Text>
-                  <Text style={[styles.activityAction, { color: colors.mutedForeground }]}>{a.action}</Text>
-                  <Text style={[styles.activityTime, { color: colors.mutedForeground }]}>{a.time}</Text>
+                <View style={styles.enrollContent}>
+                  <Text style={styles.enrollName}>{e.student}</Text>
+                  <Text style={styles.enrollCourse}>{e.course}</Text>
+                </View>
+                <View style={styles.enrollRight}>
+                  <Text style={styles.enrollTime}>{e.time}</Text>
+                  <View style={[styles.badgePill, { backgroundColor: e.color + "15" }]}>
+                    <Text style={[styles.badgeText, { color: e.color }]}>New</Text>
+                  </View>
                 </View>
               </View>
             ))}
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Sign Out */}
-        <TouchableOpacity onPress={async () => { await logout(); }} style={[styles.logoutBtn, { backgroundColor: "#E53E3E10", borderColor: "#E53E3E20" }]} activeOpacity={0.8}>
-          <Ionicons name="log-out-outline" size={18} color="#E53E3E" />
-          <Text style={[styles.logoutText, { color: "#E53E3E" }]}>Sign Out</Text>
-        </TouchableOpacity>
+        {/* ── NOTIFICATIONS & ALERTS ── */}
+        <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Important Alerts</Text>
+          </View>
+          <View style={styles.cardBlock}>
+            {alerts.map((n, i) => (
+              <View key={n.id} style={[styles.listItem, i === alerts.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={[styles.listIcon, { backgroundColor: n.color + "15" }]}>
+                  <Ionicons name={n.icon as any} size={20} color={n.color} />
+                </View>
+                <View style={styles.listTextWrap}>
+                  <Text style={styles.listTitle}>{n.title}</Text>
+                  <Text style={styles.listDesc}>{n.desc}</Text>
+                </View>
+                <TouchableOpacity style={styles.actionBtn}>
+                  <Text style={styles.actionBtnText}>View</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </Animated.View>
+
       </ScrollView>
     </View>
   );
 }
 
+// ── STYLES ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 52, position: "relative", overflow: "hidden" },
-  headerDeco1: { position: "absolute", top: -50, right: -50, width: 200, height: 200, borderRadius: 100, backgroundColor: "rgba(255,255,255,0.07)" },
-  headerDeco2: { position: "absolute", bottom: 10, left: -40, width: 130, height: 130, borderRadius: 65, backgroundColor: "rgba(255,255,255,0.06)" },
-  headerTop: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 18 },
-  rolePill: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-start", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, marginBottom: 5 },
-  roleDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#FBBF24" },
-  roleText: { color: "#FFFFFF", fontSize: 9, fontFamily: "Poppins_700Bold", letterSpacing: 1 },
-  headerName: { color: "#FFFFFF", fontSize: 21, fontFamily: "Poppins_700Bold" },
-  headerSub: { color: "rgba(255,255,255,0.7)", fontSize: 11, fontFamily: "Poppins_400Regular" },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
-  notifBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: "center", alignItems: "center", position: "relative" },
-  notifDot: { position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: 4, backgroundColor: "#F59E0B", borderWidth: 1.5, borderColor: ADMIN_COLOR },
-  headerAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(255,255,255,0.25)", borderWidth: 2, borderColor: "rgba(255,255,255,0.4)", justifyContent: "center", alignItems: "center" },
-  headerAvatarText: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
-  kpiStrip: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, paddingVertical: 11, paddingHorizontal: 8 },
-  kpiItem: { flex: 1, alignItems: "center", gap: 2 },
-  kpiDiv: { width: 1, backgroundColor: "rgba(255,255,255,0.2)", marginVertical: 4 },
-  kpiVal: { fontSize: 16, fontFamily: "Poppins_700Bold" },
-  kpiLabel: { color: "rgba(255,255,255,0.7)", fontSize: 9, fontFamily: "Poppins_400Regular" },
-  waveWrap: { position: "absolute", bottom: -1, left: 0, right: 0, height: 38, overflow: "hidden" },
-  wave: { position: "absolute", bottom: 0, left: -20, right: -20, height: 60, borderRadius: 30 },
-  scroll: { paddingHorizontal: 16, paddingTop: 16, gap: 0 },
-  qaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
-  qaCard: { alignItems: "center", borderRadius: 18, borderWidth: 1, paddingVertical: 16, paddingHorizontal: 8, gap: 7 },
-  qaIconWrap: { width: 48, height: 48, borderRadius: 15, justifyContent: "center", alignItems: "center" },
-  qaLabel: { fontSize: 11, fontFamily: "Poppins_600SemiBold" },
-  qaCount: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
-  qaCountText: { fontSize: 9, fontFamily: "Poppins_700Bold" },
-  section: { marginBottom: 18 },
-  sectionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
-  sectionTitle: { flex: 1, fontSize: 16, fontFamily: "Poppins_700Bold" },
-  sectionBadge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 10 },
-  sectionBadgeText: { fontSize: 10, fontFamily: "Poppins_600SemiBold" },
-  alertCountBadge: { width: 22, height: 22, borderRadius: 11, justifyContent: "center", alignItems: "center" },
-  alertCountText: { color: "#FFFFFF", fontSize: 10, fontFamily: "Poppins_700Bold" },
-  listCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  alertRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderLeftWidth: 3 },
-  alertIcon: { width: 32, height: 32, borderRadius: 9, justifyContent: "center", alignItems: "center", flexShrink: 0 },
-  alertMsg: { fontSize: 12, fontFamily: "Poppins_500Medium", lineHeight: 16 },
-  alertTime: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  subjectRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
-  subjectDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  subjectHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  subjectName: { fontSize: 12, fontFamily: "Poppins_600SemiBold" },
-  subjectPct: { fontSize: 12, fontFamily: "Poppins_700Bold" },
-  subjectBg: { height: 6, borderRadius: 3, overflow: "hidden" },
-  subjectFill: { height: 6, borderRadius: 3 },
-  subjectStudents: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  activityRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
-  activityIcon: { width: 34, height: 34, borderRadius: 10, justifyContent: "center", alignItems: "center", flexShrink: 0, marginTop: 2 },
-  activityUser: { fontSize: 12, fontFamily: "Poppins_700Bold" },
-  activityAction: { fontSize: 11, fontFamily: "Poppins_400Regular", lineHeight: 15 },
-  activityTime: { fontSize: 10, fontFamily: "Poppins_400Regular", marginTop: 1 },
-  logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, borderWidth: 1, paddingVertical: 14, marginBottom: 6 },
-  logoutText: { fontSize: 14, fontFamily: "Poppins_700Bold" },
+  container: { flex: 1, backgroundColor: "#F4F6F8" }, 
+  
+  header: { paddingHorizontal: 20, paddingBottom: 16, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, position: "relative", overflow: "hidden" },
+  decoCircle1: { position: "absolute", top: -50, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.15)" },
+  decoCircle2: { position: "absolute", bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.1)" },
+  
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 2 },
+  greeting: { fontSize: 18, fontFamily: "Poppins_600SemiBold", color: "rgba(255,255,255,0.9)", marginBottom: 4 },
+  adminName: { fontSize: 32, fontFamily: "Poppins_700Bold", color: "#FFFFFF", letterSpacing: -0.5 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
+  activityBtn: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
+    justifyContent: "center", 
+    alignItems: "center", 
+    borderWidth: 1, 
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    overflow: "hidden"
+  },
+  notificationDot: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#EF4444",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.8)"
+  },
+  avatarWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.25)", borderWidth: 2, borderColor: "rgba(255,255,255,0.6)", justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, overflow: "hidden" },
+  avatarImage: { width: "100%", height: "100%" },
+
+  searchContainer: { marginTop: -12, paddingHorizontal: 20, zIndex: 10 },
+  searchBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, gap: 10, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 5 },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Poppins_400Regular", color: "#0F172A", padding: 0 },
+
+  kpiSection: { marginTop: 16, marginBottom: 26 },
+  kpiScroll: { paddingHorizontal: 20, gap: 14 },
+  kpiCard: { width: 150, backgroundColor: "#FFFFFF", padding: 16, borderRadius: 20, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
+  kpiTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  kpiIconWrap: { width: 42, height: 42, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  kpiBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  kpiBadgeText: { fontSize: 11, fontFamily: "Poppins_700Bold" },
+  kpiVal: { fontSize: 24, fontFamily: "Poppins_700Bold", color: "#0F172A", marginBottom: 2 },
+  kpiTitle: { fontSize: 12, fontFamily: "Poppins_500Medium", color: "#64748B" },
+
+  scroll: { paddingBottom: 100 },
+  section: { paddingHorizontal: 20, marginBottom: 30 },
+  sectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0F172A", letterSpacing: -0.5 },
+  seeAll: { fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0EA5E9" },
+
+  qaGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 12 },
+  qaCardWrapper: { width: "31%", shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2 },
+  qaCard: { paddingVertical: 18, borderRadius: 24, alignItems: "center" },
+  qaIconWrap: { width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(255,255,255,0.6)", justifyContent: "center", alignItems: "center", marginBottom: 8 },
+  qaLabel: { fontSize: 11, fontFamily: "Poppins_700Bold" },
+
+  studentScroll: { gap: 12 },
+  studentCard: { width: 110, backgroundColor: "#FFFFFF", padding: 14, borderRadius: 20, alignItems: "center", shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 2 },
+  studentAvatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center", marginBottom: 10 },
+  studentAvatarText: { color: "#FFFFFF", fontSize: 16, fontFamily: "Poppins_700Bold" },
+  studentName: { fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A", marginBottom: 6 },
+  scorePill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  scoreText: { fontSize: 11, fontFamily: "Poppins_700Bold" },
+
+  cardBlock: { backgroundColor: "#FFFFFF", borderRadius: 24, paddingHorizontal: 18, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 },
+  
+  enrollItem: { flexDirection: "row", alignItems: "center", paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 14 },
+  enrollAvatar: { width: 46, height: 46, borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  enrollAvatarText: { fontSize: 16, fontFamily: "Poppins_700Bold" },
+  enrollContent: { flex: 1, justifyContent: "center", gap: 4 },
+  enrollName: { fontSize: 15, fontFamily: "Poppins_600SemiBold", color: "#0F172A" },
+  enrollCourse: { fontSize: 12, fontFamily: "Poppins_500Medium", color: "#64748B" },
+  enrollRight: { alignItems: "flex-end", gap: 6 },
+  enrollTime: { fontSize: 11, fontFamily: "Poppins_400Regular", color: "#94A3B8" },
+  badgePill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  badgeText: { fontSize: 10, fontFamily: "Poppins_700Bold" },
+
+  feeItem: { flexDirection: "row", alignItems: "center", paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 14 },
+  feeAvatar: { width: 46, height: 46, borderRadius: 23, justifyContent: "center", alignItems: "center" },
+  feeAvatarText: { fontSize: 15, fontFamily: "Poppins_700Bold" },
+  feeContent: { flex: 1, justifyContent: "center", gap: 3 },
+  feeName: { fontSize: 15, fontFamily: "Poppins_600SemiBold", color: "#0F172A" },
+  feeCourse: { fontSize: 12, fontFamily: "Poppins_500Medium", color: "#64748B" },
+  feeDue: { fontSize: 11, fontFamily: "Poppins_600SemiBold", marginTop: 2 },
+  feeRight: { alignItems: "flex-end", gap: 8 },
+  feeAmount: { fontSize: 16, fontFamily: "Poppins_700Bold", color: "#0F172A" },
+  remindBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#0EA5E9", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, gap: 4 },
+  remindText: { color: "#FFFFFF", fontSize: 11, fontFamily: "Poppins_600SemiBold" },
+
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 14 },
+  listIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  listTextWrap: { flex: 1 },
+  listTitle: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#0F172A", marginBottom: 2 },
+  listDesc: { fontSize: 12, fontFamily: "Poppins_400Regular", color: "#64748B", lineHeight: 18 },
+  listTime: { fontSize: 11, fontFamily: "Poppins_500Medium", color: "#94A3B8" },
+  actionBtn: { backgroundColor: "#F1F5F9", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  actionBtnText: { fontSize: 12, fontFamily: "Poppins_600SemiBold", color: "#0F172A" },
 });
+
+

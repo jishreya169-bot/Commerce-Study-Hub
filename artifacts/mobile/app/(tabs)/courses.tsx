@@ -1,197 +1,208 @@
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  Platform,
-  useWindowDimensions,
-} from "react-native";
+import React, { useState } from "react";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useColors } from "@/hooks/useColors";
-import { useApp } from "@/context/AppContext";
-import { CourseCard } from "@/components/CourseCard";
-import { SubjectChip } from "@/components/SubjectChip";
-import { CourseCardSkeleton } from "@/components/Skeleton";
-import { DrawerMenu } from "@/components/DrawerMenu";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
-const SUBJECTS = ["All", "Accountancy", "Business Studies", "Economics", "Mathematics", "English"];
+import { turso } from "../../lib/turso";
+import { RefreshControl } from "react-native";
+import { useAuth } from "@/context/AuthContext";
 
-export default function CoursesScreen() {
-  const colors = useColors();
+interface TimetableClass {
+  id: string;
+  title: string;
+  batch: string;
+  time: string;
+  color: string;
+  progress?: number;
+}
+
+export default function StudentCourses() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { courses } = useApp();
-  const { width } = useWindowDimensions();
-  const [selectedSubject, setSelectedSubject] = useState("All");
-  const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"enrolled" | "explore">("enrolled");
-  const [loading, setLoading] = useState(true);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const { user } = useAuth();
+  const [courses, setCourses] = useState<TimetableClass[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 900);
-    return () => clearTimeout(t);
-  }, []);
+  const fetchCourses = async () => {
+    if (!user) return;
+    try {
+      const userRes = await turso.execute({
+        sql: "SELECT batch FROM users WHERE id = ?",
+        args: [user.id]
+      });
+      let batch = user.class || "Class 12 - Commerce";
+      if (userRes.rows.length > 0) {
+        batch = (userRes.rows[0][0] as string) || batch;
+      }
+      const result = await turso.execute({
+        sql: "SELECT * FROM timetable WHERE batch = ?",
+        args: [batch]
+      });
+      const data = result.rows.map(row => {
+        const obj: any = {};
+        result.columns.forEach((col, idx) => { obj[col] = row[idx]; });
+        return obj as TimetableClass;
+      });
+      setCourses(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const isWide = width >= 600;
+  React.useEffect(() => {
+    fetchCourses();
+  }, [user?.class]);
 
-  const filtered = courses.filter((c) => {
-    const matchSub = selectedSubject === "All" || c.subject === selectedSubject;
-    const matchSearch =
-      c.title.toLowerCase().includes(search.toLowerCase()) ||
-      c.instructor.toLowerCase().includes(search.toLowerCase());
-    const matchTab = tab === "enrolled" ? c.enrolled : !c.enrolled;
-    return matchSub && matchSearch && matchTab;
-  });
-
-  const enrolled = courses.filter((c) => c.enrolled);
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await fetchCourses();
+    setRefreshing(false);
+  }, [user?.class]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <TouchableOpacity
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDrawerOpen(true); }}
-          style={[styles.hamburger, { backgroundColor: colors.muted }]}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="menu" size={22} color={colors.foreground} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.foreground }]}>My Courses</Text>
-        <View style={[styles.toggle, { backgroundColor: colors.secondary }]}>
-          {(["enrolled", "explore"] as const).map((t) => (
-            <Text
-              key={t}
-              onPress={() => setTab(t)}
-              style={[
-                styles.toggleOption,
-                { backgroundColor: tab === t ? colors.primary : "transparent", color: tab === t ? "#FFFFFF" : colors.mutedForeground },
-              ]}
-            >
-              {t === "enrolled" ? "Enrolled" : "Explore"}
-            </Text>
-          ))}
+    <View style={styles.container}>
+      
+      {/* HEADER */}
+      <LinearGradient colors={["#0EA5E9", "#2563EB"]} style={[styles.header, { paddingTop: Math.max(insets.top, 40) + 30 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <View style={styles.decoCircle1} />
+        <View style={styles.decoCircle2} />
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>My Courses</Text>
+          <View style={{ width: 40 }} />
         </View>
-      </View>
+      </LinearGradient>
 
-      {/* Stats row */}
-      {!loading && (
-        <View style={[styles.statsRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statVal, { color: colors.primary }]}>{enrolled.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Enrolled</Text>
-          </View>
-          <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statVal, { color: colors.success }]}>
-              {enrolled.length > 0 ? Math.round(enrolled.reduce((a, c) => a + (c.completedLectures / c.totalLectures) * 100, 0) / enrolled.length) : 0}%
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Avg Progress</Text>
-          </View>
-          <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statVal, { color: colors.warning }]}>
-              {enrolled.reduce((a, c) => a + c.completedLectures, 0)}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Lectures Done</Text>
-          </View>
-          <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statVal, { color: "#7B8EBF" }]}>
-              {courses.filter((c) => !c.enrolled).length}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Available</Text>
-          </View>
-        </View>
-      )}
-
-      {/* Search */}
-      <View style={[styles.searchWrap, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <View style={[styles.searchBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Ionicons name="search-outline" size={16} color={colors.mutedForeground} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search courses or instructors..."
-            placeholderTextColor={colors.mutedForeground}
-            style={[styles.searchInput, { color: colors.foreground }]}
+      {/* FLOATING SEARCH */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={20} color="#64748B" />
+          <TextInput 
+            style={styles.searchInput} 
+            placeholder="Search enrolled courses..." 
+            placeholderTextColor="#94A3B8" 
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
-          {search.length > 0 && (
-            <Ionicons name="close-circle" size={16} color={colors.mutedForeground} onPress={() => setSearch("")} />
-          )}
         </View>
       </View>
 
-      {/* Subject chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.chipRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-        {SUBJECTS.map((s) => (
-          <SubjectChip key={s} label={s} selected={selectedSubject === s} onPress={() => setSelectedSubject(s)} />
-        ))}
-      </ScrollView>
-
-      {/* Count */}
-      {!loading && (
-        <View style={[styles.countBar, { backgroundColor: colors.background }]}>
-          <Text style={[styles.countText, { color: colors.mutedForeground }]}>
-            {filtered.length} {filtered.length === 1 ? "course" : "courses"} found
-          </Text>
-        </View>
-      )}
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.list, isWide && styles.listWide, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0EA5E9" />}
       >
-        {loading ? (
-          [1, 2, 3].map((i) => <CourseCardSkeleton key={i} />)
-        ) : filtered.length === 0 ? (
-          <View style={[styles.empty, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Ionicons name="book-outline" size={44} color={colors.border} />
-            <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>No courses found</Text>
-            <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
-              {tab === "enrolled" ? "Enroll in a course to get started" : "Try a different filter"}
-            </Text>
-          </View>
-        ) : (
-          filtered.map((c) => (
-            <CourseCard key={c.id} course={c} onPress={() => router.push(`/course/${c.id}`)} />
-          ))
-        )}
-      </ScrollView>
 
-      <DrawerMenu visible={drawerOpen} onClose={() => setDrawerOpen(false)} />
+        {/* PROGRESS OVERVIEW */}
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
+          <View style={styles.cardBlock}>
+            <View style={styles.progressRow}>
+              <View style={styles.progressStat}>
+                <Text style={styles.statVal}>{courses.length}</Text>
+                <Text style={styles.statLabel}>Upcoming Classes</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.progressStat}>
+                <Text style={styles.statVal}>{user?.class || "N/A"}</Text>
+                <Text style={styles.statLabel}>My Batch</Text>
+              </View>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* COURSE LIST */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Enrolled Classes</Text>
+          </View>
+          <View style={styles.cardBlock}>
+            {courses.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_500Medium", color: "#94A3B8" }}>No upcoming classes found.</Text>
+              </View>
+            )}
+            {courses.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase())).map((c, i, arr) => (
+              <TouchableOpacity 
+                key={c.id} 
+                style={[styles.listItem, i === arr.length - 1 && { borderBottomWidth: 0 }]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  // router.push(`/course/${c.id}`) -> If it corresponds to a course
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.listIcon, { backgroundColor: (c.color || "#3B82F6") + "15" }]}>
+                  <Ionicons name="book" size={24} color={c.color || "#3B82F6"} />
+                </View>
+                <View style={styles.listTextWrap}>
+                  <Text style={styles.listTitle}>{c.title}</Text>
+                  
+                  {/* Progress Bar / Time */}
+                  <View style={styles.progressWrap}>
+                    <Ionicons name="time-outline" size={14} color="#64748B" />
+                    <Text style={[styles.progressText, { width: 'auto', fontSize: 12 }]}>{c.time}</Text>
+                  </View>
+
+                </View>
+                <View style={styles.resumeBtn}>
+                  <Ionicons name="calendar" size={16} color="#FFF" />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1 },
-  hamburger: { width: 40, height: 40, borderRadius: 12, justifyContent: "center", alignItems: "center" },
-  title: { flex: 1, fontSize: 20, fontFamily: "Poppins_700Bold" },
-  toggle: { flexDirection: "row", borderRadius: 12, padding: 3 },
-  toggleOption: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10, fontSize: 12, fontFamily: "Poppins_600SemiBold", overflow: "hidden" },
-  statsRow: { flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1, alignItems: "center" },
-  statItem: { flex: 1, alignItems: "center" },
-  statVal: { fontSize: 17, fontFamily: "Poppins_700Bold" },
-  statLabel: { fontSize: 9, fontFamily: "Poppins_400Regular" },
-  statDiv: { width: 1, height: 26 },
-  searchWrap: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
-  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
-  searchInput: { flex: 1, fontSize: 13, fontFamily: "Poppins_400Regular" },
-  chipRow: { maxHeight: 56, borderBottomWidth: 1 },
-  countBar: { paddingHorizontal: 16, paddingVertical: 7 },
-  countText: { fontSize: 11, fontFamily: "Poppins_400Regular" },
-  list: { paddingHorizontal: 16, paddingTop: 8 },
-  listWide: { flexDirection: "row", flexWrap: "wrap", gap: 14 },
-  empty: { borderRadius: 16, borderWidth: 1, padding: 36, alignItems: "center", gap: 10, marginTop: 20 },
-  emptyTitle: { fontSize: 16, fontFamily: "Poppins_600SemiBold" },
-  emptyHint: { fontSize: 13, fontFamily: "Poppins_400Regular", textAlign: "center" },
+  container: { flex: 1, backgroundColor: "#F4F6F8" }, 
+  header: { paddingHorizontal: 20, paddingBottom: 16, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, position: "relative", overflow: "hidden" },
+  decoCircle1: { position: "absolute", top: -50, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.15)" },
+  decoCircle2: { position: "absolute", bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.1)" },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 2 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  headerTitle: { fontSize: 20, fontFamily: "Poppins_700Bold", color: "#FFFFFF" },
+  
+  searchContainer: { marginTop: -12, paddingHorizontal: 20, zIndex: 10 },
+  searchBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, gap: 10, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 5 },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Poppins_400Regular", color: "#0F172A", padding: 0 },
+
+  scroll: { paddingBottom: 100, paddingTop: 20 },
+  section: { paddingHorizontal: 20, marginBottom: 30 },
+  sectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0F172A", letterSpacing: -0.5 },
+
+  cardBlock: { backgroundColor: "#FFFFFF", borderRadius: 24, padding: 18, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 },
+  
+  progressRow: { flexDirection: "row", alignItems: "center" },
+  progressStat: { flex: 1, alignItems: "center" },
+  statVal: { fontSize: 24, fontFamily: "Poppins_700Bold", color: "#0EA5E9" },
+  statLabel: { fontSize: 12, fontFamily: "Poppins_500Medium", color: "#64748B" },
+  statDivider: { width: 1, height: 40, backgroundColor: "#E2E8F0" },
+
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 14 },
+  listIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  listTextWrap: { flex: 1 },
+  listTitle: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#0F172A", marginBottom: 6 },
+  
+  progressWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
+  progressBg: { flex: 1, height: 6, backgroundColor: "#E2E8F0", borderRadius: 3, overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: 3 },
+  progressText: { fontSize: 10, fontFamily: "Poppins_600SemiBold", color: "#64748B", width: 45 },
+
+  resumeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#0EA5E9", justifyContent: "center", alignItems: "center" },
 });
+
+
+
+

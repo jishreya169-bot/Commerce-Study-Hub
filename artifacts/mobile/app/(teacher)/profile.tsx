@@ -1,260 +1,332 @@
-import React, { useContext, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useColors } from "@/hooks/useColors";
-import { useAuth } from "@/context/AuthContext";
-import { ThemeContext } from "@/context/ThemeContext";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-
-const ACHIEVEMENTS = [
-  { icon: "star", label: "Top Rated", color: "#D69E2E", desc: "4.9 avg stars" },
-  { icon: "people", label: "45 Students", color: "#5B9BD5", desc: "Active learners" },
-  { icon: "ribbon", label: "CBSE Expert", color: "#9B7BC4", desc: "Certified" },
-  { icon: "trophy", label: "Best Teacher", color: "#48BB78", desc: "March 2026" },
-  { icon: "chatbubbles", label: "Quick Reply", color: "#BF7B5B", desc: "< 30 min avg" },
-  { icon: "flame", label: "60 Day Streak", color: "#E53E3E", desc: "Teaching streak" },
-];
-
-const SUBJECTS_TAUGHT = [
-  { name: "Accountancy XII", students: 42, completion: 68, color: "#5B9BD5" },
-  { name: "Economics XII", students: 38, completion: 55, color: "#5BAD9B" },
-  { name: "Accountancy XI", students: 35, completion: 82, color: "#7B8EBF" },
-];
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown, Layout, SlideInDown, SlideOutUp } from "react-native-reanimated";
+import { Image } from "expo-image";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { turso } from "../../lib/turso";
+import { useAuth } from "@/context/AuthContext";
 
 export default function TeacherProfile() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useContext(ThemeContext);
-  const [activeTab, setActiveTab] = useState<"info" | "courses">("info");
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const isDark = theme === "dark";
+
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  
+  // Prefs
+  const [pushEnabled, setPushEnabled] = useState(true);
+  const [emailEnabled, setEmailEnabled] = useState(false);
+
+  // Edit State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState(user?.name || "");
+  const [saving, setSaving] = useState(false);
+  const [displayName, setDisplayName] = useState(user?.name || "Teacher");
+
+  // Stats
+  const [totalClasses, setTotalClasses] = useState("0");
+  const [doubtsResolved, setDoubtsResolved] = useState("0");
+
+  useEffect(() => {
+    // Load preferences
+    AsyncStorage.getItem("teacher_prefs").then(p => {
+      if(p) {
+        const prefs = JSON.parse(p);
+        setPushEnabled(prefs.push ?? true);
+        setEmailEnabled(prefs.email ?? false);
+      }
+    });
+
+    const fetchStats = async () => {
+      if (!user?.id) return;
+      try {
+        const classRes = await turso.execute({
+          sql: "SELECT COUNT(DISTINCT batch) FROM timetable WHERE teacherId = ?",
+          args: [user.id]
+        });
+        const doubtsRes = await turso.execute({
+          sql: "SELECT COUNT(*) FROM doubts WHERE teacherId = ? AND resolved = 1",
+          args: [user.id]
+        });
+        setTotalClasses(classRes.rows[0]?.[0]?.toString() || "0");
+        setDoubtsResolved(doubtsRes.rows[0]?.[0]?.toString() || "0");
+      } catch (e) {
+        console.error("Stats Error:", e);
+      }
+    };
+    fetchStats();
+  }, [user?.id]);
+
+  const savePrefs = (key: string, val: boolean) => {
+    const prefs = { push: pushEnabled, email: emailEnabled, [key]: val };
+    AsyncStorage.setItem("teacher_prefs", JSON.stringify(prefs));
+  };
+
+  const toggleSection = (section: string) => {
+    Haptics.selectionAsync();
+    setExpandedSection(expandedSection === section ? null : section);
+  };
+
+  const handleLogout = async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await logout();
+    router.replace("/login");
+  };
+
+  const saveProfile = async () => {
+    if (!editName.trim()) return;
+    setSaving(true);
+    try {
+      if (user?.id) {
+        await turso.execute({
+          sql: "UPDATE users SET name = ? WHERE id = ?",
+          args: [editName.trim(), user.id]
+        });
+      }
+      setDisplayName(editName.trim());
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowEditModal(false);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to update profile.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Platform.OS === "web" ? 110 : 110 }}>
+    <View style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll} bounces={false}>
+        
+        {/* ── HEADER ── */}
+        <LinearGradient colors={["#0EA5E9", "#2563EB"]} style={[styles.header, { paddingTop: Math.max(insets.top, 40) + 30 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View style={styles.decoCircle1} />
+          <View style={styles.decoCircle2} />
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Profile & Settings</Text>
+            <View style={{ width: 40 }} />
+          </View>
+        </LinearGradient>
 
-        {/* ── HERO BANNER ── */}
-        <View style={[styles.heroBanner, { paddingTop: topPad + 16, backgroundColor: "#48BB78" }]}>
-          <View style={[styles.decCircle1, { backgroundColor: "rgba(255,255,255,0.08)" }]} />
-          <View style={[styles.decCircle2, { backgroundColor: "rgba(255,255,255,0.06)" }]} />
-          {/* Edit button */}
-          <TouchableOpacity style={styles.editBtn} activeOpacity={0.8}>
-            <Ionicons name="pencil" size={14} color="#FFFFFF" />
-          </TouchableOpacity>
-          {/* Avatar ring */}
-          <View style={[styles.avatarRing, { borderColor: "rgba(255,255,255,0.4)" }]}>
-            <View style={[styles.avatarInner, { backgroundColor: "rgba(255,255,255,0.25)" }]}>
-              <Text style={styles.avatarText}>{user?.avatar ?? "T"}</Text>
+        {/* ── PROFILE CARD ── */}
+        <View style={styles.profileBox}>
+          <View style={styles.avatarWrap}>
+            {user?.avatar === 'boy' ? (
+              <Image source={{ uri: "https://avatar.iran.liara.run/public/boy" }} style={styles.avatarImage} contentFit="cover" transition={200} />
+            ) : user?.avatar === 'girl' ? (
+              <Image source={{ uri: "https://avatar.iran.liara.run/public/girl" }} style={styles.avatarImage} contentFit="cover" transition={200} />
+            ) : user?.avatar && user.avatar.length > 2 ? (
+              <Image source={{ uri: user.avatar }} style={styles.avatarImage} contentFit="cover" transition={200} />
+            ) : (
+              <View style={[styles.avatarImage, { backgroundColor: "#2563EB", justifyContent: "center", alignItems: "center" }]}>
+                <Text style={{ color: "#FFF", fontSize: 32, fontFamily: "Poppins_700Bold" }}>{user?.avatar || user?.name?.charAt(0) || "T"}</Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.editBadge} onPress={() => { Haptics.selectionAsync(); setShowEditModal(true); }}>
+              <Ionicons name="camera" size={14} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.userName}>{displayName}</Text>
+          <Text style={styles.userRole}>{(user?.role ?? "Teacher").toUpperCase()} • ID: {user?.id?.substring(0, 6).toUpperCase() ?? "TCH-001"}</Text>
+          
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statVal}>{totalClasses}</Text>
+              <Text style={styles.statLabel}>Active Batches</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={styles.statVal}>{doubtsResolved}</Text>
+              <Text style={styles.statLabel}>Doubts Resolved</Text>
             </View>
           </View>
-          <Text style={styles.heroName}>{user?.name}</Text>
-          <Text style={styles.heroSub}>{user?.subject}</Text>
-          <Text style={styles.heroEmail}>{user?.email}</Text>
-          {/* Qualification pills */}
-          <View style={styles.heroPills}>
-            {[user?.qualification, user?.experience + " Exp."].map((p) => (
-              <View key={p} style={[styles.heroPill, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
-                <Text style={styles.heroPillText}>{p}</Text>
-              </View>
-            ))}
-          </View>
         </View>
 
-        {/* ── FLOATING STATS ── */}
-        <View style={styles.statsWrap}>
-          <View style={[styles.statsCard, { backgroundColor: colors.card, shadowColor: "#000" }]}>
-            {[
-              { val: "45", label: "Students", color: "#5B9BD5", icon: "people" },
-              { val: "3", label: "Courses", color: "#48BB78", icon: "book" },
-              { val: "4.9", label: "Rating", color: "#D69E2E", icon: "star" },
-              { val: "127", label: "Doubts", color: "#9B7BC4", icon: "checkmark-circle" },
-            ].map((s, i) => (
-              <React.Fragment key={s.label}>
-                <View style={styles.statItem}>
-                  <View style={[styles.statIconWrap, { backgroundColor: s.color + "18" }]}>
-                    <Ionicons name={s.icon as any} size={14} color={s.color} />
-                  </View>
-                  <Text style={[styles.statVal, { color: colors.foreground }]}>{s.val}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-                </View>
-                {i < 3 && <View style={[styles.statDiv, { backgroundColor: colors.border }]} />}
-              </React.Fragment>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.body}>
-          {/* ── TABS ── */}
-          <View style={[styles.tabToggle, { backgroundColor: colors.muted }]}>
-            {(["info", "courses"] as const).map((t) => (
-              <TouchableOpacity
-                key={t}
-                onPress={() => { setActiveTab(t); Haptics.selectionAsync(); }}
-                style={[styles.tabBtn, { backgroundColor: activeTab === t ? "#48BB78" : "transparent" }]}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.tabBtnText, { color: activeTab === t ? "#FFFFFF" : colors.mutedForeground }]}>
-                  {t === "info" ? "Profile" : "My Courses"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {activeTab === "info" ? (
-            <>
-              {/* About */}
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.cardHeader}>
-                  <View style={[styles.cardIcon, { backgroundColor: "#48BB7818" }]}>
-                    <Ionicons name="person" size={15} color="#48BB78" />
-                  </View>
-                  <Text style={[styles.cardTitle, { color: colors.foreground }]}>About Me</Text>
-                </View>
-                <Text style={[styles.aboutText, { color: colors.mutedForeground }]}>
-                  Passionate Commerce educator with {user?.experience} of teaching experience. Specialized in making complex Accountancy and Economics concepts easy to understand for Class 11-12 students.
-                </Text>
+        {/* ── ACCOUNT DETAILS ── */}
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
+          <Text style={styles.sectionTitle}>Account Information</Text>
+          <View style={styles.cardBlock}>
+            
+            <TouchableOpacity style={styles.listItem} onPress={() => toggleSection("personal")} activeOpacity={0.7}>
+              <View style={[styles.icon, { backgroundColor: "#EFF6FF" }]}>
+                <Ionicons name="person" size={20} color="#3B82F6" />
               </View>
-
-              {/* Achievements */}
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.cardHeader}>
-                  <View style={[styles.cardIcon, { backgroundColor: "#D69E2E18" }]}>
-                    <Ionicons name="trophy" size={15} color="#D69E2E" />
-                  </View>
-                  <Text style={[styles.cardTitle, { color: colors.foreground }]}>Achievements</Text>
-                  <View style={[styles.countBadge, { backgroundColor: "#48BB7818" }]}>
-                    <Text style={[styles.countBadgeText, { color: "#48BB78" }]}>{ACHIEVEMENTS.length}</Text>
-                  </View>
+              <Text style={styles.listTitle}>Personal Details</Text>
+              <Ionicons name={expandedSection === "personal" ? "chevron-up" : "chevron-down"} size={20} color="#CBD5E1" />
+            </TouchableOpacity>
+            
+            {expandedSection === "personal" && (
+              <Animated.View entering={SlideInDown} exiting={SlideOutUp} layout={Layout.springify()} style={styles.expandedContent}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Email</Text>
+                  <Text style={styles.detailValue}>{user?.email ?? "Not Provided"}</Text>
                 </View>
-                <View style={styles.achieveGrid}>
-                  {ACHIEVEMENTS.map((a) => (
-                    <View key={a.label} style={[styles.achieveCard, { backgroundColor: a.color + "10", borderColor: a.color + "25" }]}>
-                      <View style={[styles.achieveIcon, { backgroundColor: a.color + "20" }]}>
-                        <Ionicons name={a.icon as any} size={18} color={a.color} />
-                      </View>
-                      <Text style={[styles.achieveLabel, { color: colors.foreground }]}>{a.label}</Text>
-                      <Text style={[styles.achieveDesc, { color: colors.mutedForeground }]}>{a.desc}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              {/* Settings */}
-              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.cardHeader}>
-                  <View style={[styles.cardIcon, { backgroundColor: "#7B8EBF18" }]}>
-                    <Ionicons name="settings" size={15} color="#7B8EBF" />
-                  </View>
-                  <Text style={[styles.cardTitle, { color: colors.foreground }]}>Preferences</Text>
-                </View>
-                <TouchableOpacity onPress={toggleTheme} style={[styles.settingRow, { borderBottomColor: colors.border }]} activeOpacity={0.8}>
-                  <View style={[styles.settingIcon, { backgroundColor: "#6366F118" }]}>
-                    <Ionicons name={isDark ? "moon" : "sunny"} size={15} color="#6366F1" />
-                  </View>
-                  <Text style={[styles.settingLabel, { color: colors.foreground }]}>Dark Mode</Text>
-                  <View style={[styles.toggle, { backgroundColor: isDark ? "#48BB78" : colors.muted }]}>
-                    <View style={[styles.toggleThumb, { transform: [{ translateX: isDark ? 18 : 2 }] }]} />
-                  </View>
+                <TouchableOpacity style={styles.editContentBtn} onPress={() => setShowEditModal(true)}>
+                  <Text style={styles.editContentText}>Edit Details</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.settingRow, { borderBottomColor: "transparent" }]} activeOpacity={0.8} onPress={async () => { await logout(); }}>
-                  <View style={[styles.settingIcon, { backgroundColor: "#E53E3E18" }]}>
-                    <Ionicons name="log-out-outline" size={15} color="#E53E3E" />
-                  </View>
-                  <Text style={[styles.settingLabel, { color: "#E53E3E" }]}>Sign Out</Text>
-                  <Ionicons name="chevron-forward" size={14} color={colors.border} />
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <>
-              {/* My Courses tab */}
-              {SUBJECTS_TAUGHT.map((s) => (
-                <View key={s.name} style={[styles.courseCard, { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: s.color, borderLeftWidth: 4 }]}>
-                  <View style={styles.courseTop}>
-                    <View style={[styles.courseIcon, { backgroundColor: s.color + "18" }]}>
-                      <Ionicons name="book" size={18} color={s.color} />
-                    </View>
-                    <View style={styles.courseInfo}>
-                      <Text style={[styles.courseName, { color: colors.foreground }]}>{s.name}</Text>
-                      <Text style={[styles.courseMeta, { color: colors.mutedForeground }]}>{s.students} students enrolled</Text>
-                    </View>
-                    <Text style={[styles.coursePct, { color: s.color }]}>{s.completion}%</Text>
-                  </View>
-                  <View style={[styles.courseTrack, { backgroundColor: colors.muted }]}>
-                    <View style={[styles.courseFill, { width: `${s.completion}%` as any, backgroundColor: s.color }]} />
-                  </View>
-                  <Text style={[styles.courseCaption, { color: colors.mutedForeground }]}>Course completion</Text>
-                </View>
-              ))}
-            </>
-          )}
+              </Animated.View>
+            )}
 
-          {/* Version row */}
-          <View style={[styles.versionRow, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-            <Ionicons name="ribbon" size={12} color="#48BB78" />
-            <Text style={[styles.versionText, { color: colors.mutedForeground }]}>CBSE Certified Educator • VidyaPath v1.0.0</Text>
+            <View style={styles.divider} />
+
+            <TouchableOpacity style={styles.listItem} onPress={() => toggleSection("academic")} activeOpacity={0.7}>
+              <View style={[styles.icon, { backgroundColor: "#F3E8FF" }]}>
+                <Ionicons name="school" size={20} color="#8B5CF6" />
+              </View>
+              <Text style={styles.listTitle}>Academic Portfolio</Text>
+              <Ionicons name={expandedSection === "academic" ? "chevron-up" : "chevron-down"} size={20} color="#CBD5E1" />
+            </TouchableOpacity>
+
+            {expandedSection === "academic" && (
+              <Animated.View entering={SlideInDown} exiting={SlideOutUp} layout={Layout.springify()} style={styles.expandedContent}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Subject Area</Text>
+                  <Text style={styles.detailValue}>Commerce Studies</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Role Status</Text>
+                  <Text style={[styles.detailValue, { color: "#10B981" }]}>Active Staff</Text>
+                </View>
+              </Animated.View>
+            )}
           </View>
-        </View>
+        </Animated.View>
+
+        {/* ── PREFERENCES ── */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferences</Text>
+          <View style={styles.cardBlock}>
+            
+            <View style={styles.listItem}>
+              <View style={[styles.icon, { backgroundColor: "#FFFBEB" }]}>
+                <Ionicons name="notifications" size={20} color="#F59E0B" />
+              </View>
+              <Text style={styles.listTitle}>Push Notifications</Text>
+              <Switch 
+                value={pushEnabled} 
+                onValueChange={(val) => { Haptics.selectionAsync(); setPushEnabled(val); savePrefs("push", val); }} 
+                trackColor={{ false: "#E2E8F0", true: "#34D399" }}
+                thumbColor={"#FFFFFF"}
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.listItem}>
+              <View style={[styles.icon, { backgroundColor: "#ECFDF5" }]}>
+                <Ionicons name="mail" size={20} color="#10B981" />
+              </View>
+              <Text style={styles.listTitle}>Student Progress Emails</Text>
+              <Switch 
+                value={emailEnabled} 
+                onValueChange={(val) => { Haptics.selectionAsync(); setEmailEnabled(val); savePrefs("email", val); }} 
+                trackColor={{ false: "#E2E8F0", true: "#34D399" }}
+                thumbColor={"#FFFFFF"}
+              />
+            </View>
+
+          </View>
+        </Animated.View>
+
+        {/* ── LOGOUT ── */}
+        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <Ionicons name="log-out" size={20} color="#EF4444" />
+            <Text style={styles.logoutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
       </ScrollView>
+
+      {/* ── EDIT PROFILE MODAL ── */}
+      {showEditModal && (
+        <View style={StyleSheet.absoluteFill}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: "#FFF", padding: 24, borderTopLeftRadius: 32, borderTopRightRadius: 32 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <Text style={{ fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0F172A" }}>Edit Profile</Text>
+                <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                  <Ionicons name="close-circle" size={28} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#334155", marginBottom: 8 }}>Name</Text>
+                <TextInput 
+                  style={{ backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, fontFamily: "Poppins_400Regular", color: "#0F172A" }} 
+                  placeholder="Your Name" 
+                  value={editName} 
+                  onChangeText={setEditName} 
+                />
+              </View>
+
+              <TouchableOpacity 
+                style={{ backgroundColor: "#0EA5E9", borderRadius: 16, paddingVertical: 16, alignItems: "center", marginTop: 10 }} 
+                onPress={saveProfile}
+                disabled={saving}
+              >
+                <Text style={{ color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" }}>{saving ? "Saving..." : "Save Changes"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  heroBanner: { paddingHorizontal: 16, paddingBottom: 36, alignItems: "center", gap: 5, position: "relative", overflow: "hidden" },
-  decCircle1: { position: "absolute", width: 220, height: 220, borderRadius: 110, top: -60, right: -50 },
-  decCircle2: { position: "absolute", width: 120, height: 120, borderRadius: 60, bottom: -30, left: -20 },
-  editBtn: { position: "absolute", right: 16, top: 16, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
-  avatarRing: { width: 90, height: 90, borderRadius: 45, borderWidth: 3, justifyContent: "center", alignItems: "center", marginBottom: 4 },
-  avatarInner: { width: 80, height: 80, borderRadius: 40, justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#FFFFFF", fontSize: 26, fontFamily: "Poppins_700Bold" },
-  heroName: { color: "#FFFFFF", fontSize: 21, fontFamily: "Poppins_700Bold" },
-  heroSub: { color: "rgba(255,255,255,0.85)", fontSize: 13, fontFamily: "Poppins_500Medium" },
-  heroEmail: { color: "rgba(255,255,255,0.7)", fontSize: 11, fontFamily: "Poppins_400Regular" },
-  heroPills: { flexDirection: "row", gap: 8, marginTop: 6 },
-  heroPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  heroPillText: { color: "#FFFFFF", fontSize: 10, fontFamily: "Poppins_600SemiBold" },
-  statsWrap: { paddingHorizontal: 16, marginTop: -24 },
-  statsCard: { flexDirection: "row", alignItems: "center", borderRadius: 18, paddingVertical: 14, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5 },
-  statItem: { flex: 1, alignItems: "center", gap: 4 },
-  statIconWrap: { width: 28, height: 28, borderRadius: 8, justifyContent: "center", alignItems: "center" },
-  statVal: { fontSize: 15, fontFamily: "Poppins_700Bold" },
-  statLabel: { fontSize: 9, fontFamily: "Poppins_400Regular" },
-  statDiv: { width: 1, height: 30 },
-  body: { padding: 16, gap: 14 },
-  tabToggle: { flexDirection: "row", borderRadius: 14, padding: 3 },
-  tabBtn: { flex: 1, paddingVertical: 9, alignItems: "center", borderRadius: 12 },
-  tabBtnText: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
-  card: { borderRadius: 18, borderWidth: 1, padding: 16, gap: 12 },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  cardIcon: { width: 30, height: 30, borderRadius: 9, justifyContent: "center", alignItems: "center" },
-  cardTitle: { flex: 1, fontSize: 15, fontFamily: "Poppins_700Bold" },
-  countBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  countBadgeText: { fontSize: 11, fontFamily: "Poppins_700Bold" },
-  aboutText: { fontSize: 13, fontFamily: "Poppins_400Regular", lineHeight: 20 },
-  achieveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  achieveCard: { width: "31%", borderRadius: 12, borderWidth: 1, padding: 10, alignItems: "center", gap: 5 },
-  achieveIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: "center", alignItems: "center" },
-  achieveLabel: { fontSize: 11, fontFamily: "Poppins_700Bold", textAlign: "center" },
-  achieveDesc: { fontSize: 9, fontFamily: "Poppins_400Regular", textAlign: "center" },
-  settingRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, borderBottomWidth: 1 },
-  settingIcon: { width: 32, height: 32, borderRadius: 9, justifyContent: "center", alignItems: "center" },
-  settingLabel: { flex: 1, fontSize: 13, fontFamily: "Poppins_500Medium" },
-  toggle: { width: 40, height: 24, borderRadius: 12, justifyContent: "center", paddingHorizontal: 2 },
-  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#FFFFFF" },
-  courseCard: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 10 },
-  courseTop: { flexDirection: "row", alignItems: "center", gap: 10 },
-  courseIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: "center", alignItems: "center" },
-  courseInfo: { flex: 1 },
-  courseName: { fontSize: 13, fontFamily: "Poppins_700Bold" },
-  courseMeta: { fontSize: 11, fontFamily: "Poppins_400Regular" },
-  coursePct: { fontSize: 16, fontFamily: "Poppins_700Bold" },
-  courseTrack: { height: 7, borderRadius: 4, overflow: "hidden" },
-  courseFill: { height: 7, borderRadius: 4 },
-  courseCaption: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  versionRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 12, borderWidth: 1, padding: 10 },
-  versionText: { fontSize: 11, fontFamily: "Poppins_400Regular" },
+  container: { flex: 1, backgroundColor: "#F4F6F8" }, 
+  
+  header: { paddingHorizontal: 20, paddingBottom: 12, position: "relative", overflow: "hidden" },
+  decoCircle1: { position: "absolute", top: -50, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.15)" },
+  decoCircle2: { position: "absolute", bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.1)" },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 2 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  headerTitle: { fontSize: 20, fontFamily: "Poppins_700Bold", color: "#FFFFFF" },
+  
+  profileBox: { alignItems: "center", zIndex: 10, marginTop: -30, backgroundColor: "#FFF", marginHorizontal: 20, borderRadius: 24, paddingVertical: 24, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4 },
+  avatarWrap: { width: 100, height: 100, borderRadius: 50, backgroundColor: "#FFF", padding: 4, justifyContent: "center", alignItems: "center", marginBottom: 16, position: "relative", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
+  avatarImage: { width: 92, height: 92, borderRadius: 46 },
+  editBadge: { position: "absolute", bottom: 2, right: 2, backgroundColor: "#0EA5E9", width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: "#FFF", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3 },
+  userName: { fontSize: 22, fontFamily: "Poppins_700Bold", color: "#0F172A", marginBottom: 2 },
+  userRole: { fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B", marginBottom: 16 },
+  statsRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", paddingHorizontal: 20 },
+  statBox: { flex: 1, alignItems: "center" },
+  statVal: { fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0EA5E9" },
+  statLabel: { fontSize: 11, fontFamily: "Poppins_500Medium", color: "#94A3B8" },
+  statDivider: { width: 1, height: 30, backgroundColor: "#E2E8F0" },
+
+  scroll: { paddingBottom: 100, paddingTop: 0 },
+  
+  section: { paddingHorizontal: 20, marginBottom: 24, marginTop: 24 },
+  sectionTitle: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#64748B", marginBottom: 12, marginLeft: 4, textTransform: "uppercase", letterSpacing: 0.5 },
+  cardBlock: { backgroundColor: "#FFFFFF", borderRadius: 24, paddingHorizontal: 18, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 18, gap: 14 },
+  icon: { width: 42, height: 42, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  listTitle: { flex: 1, fontSize: 15, fontFamily: "Poppins_600SemiBold", color: "#334155" },
+  divider: { height: 1, backgroundColor: "#F1F5F9" },
+
+  expandedContent: { backgroundColor: "#F8FAFC", borderRadius: 16, padding: 16, marginBottom: 18, gap: 12 },
+  detailRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  detailLabel: { fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B" },
+  detailValue: { fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" },
+  editContentBtn: { marginTop: 8, alignSelf: "flex-end" },
+  editContentText: { fontSize: 12, fontFamily: "Poppins_600SemiBold", color: "#0EA5E9" },
+
+  logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#FEF2F2", paddingVertical: 18, borderRadius: 20, gap: 8, borderWidth: 1, borderColor: "#FEE2E2" },
+  logoutText: { fontSize: 16, fontFamily: "Poppins_600SemiBold", color: "#EF4444" },
 });
+
+
+
+

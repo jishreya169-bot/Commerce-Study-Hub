@@ -1,6 +1,6 @@
 import React from "react";
 import Svg, {
-  Path, Rect, Circle, Line, G, Defs, LinearGradient, Stop, Ellipse, Polygon,
+  Path, Rect, Circle, Line, G, Defs, LinearGradient, Stop, Ellipse, Polygon, Polyline
 } from "react-native-svg";
 import { useWindowDimensions } from "react-native";
 

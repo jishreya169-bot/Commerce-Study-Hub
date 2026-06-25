@@ -1,366 +1,571 @@
-import React, { useState } from "react";
-import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Platform, Modal,
-} from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Image, Modal } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useColors } from "@/hooks/useColors";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { turso } from "../../lib/turso";
+import * as ImagePicker from 'expo-image-picker';
+import DropdownSelector, { DropdownOption } from "../../components/DropdownSelector";
+import DateTimePicker from "../../components/DateTimePicker";
+import ChangePasswordModal from "../../components/ChangePasswordModal";
+import { scheduleFeeReminderNotification } from "../../lib/notifications";
 
-const ALL_CLASSES = ["XII-A", "XII-B", "XII-C", "XI-A", "XI-B", "XI-C"];
+interface Student {
+  id: string;
+  name: string;
+  batch: string;
+  phone: string;
+  email: string;
+  status: string;
+  color: string;
+  avatar?: string | null;
+  dob?: string;
+  parentId?: string;
+}
 
-const INIT_STUDENTS = [
-  { id: "s1", name: "Priya Sharma", email: "priya@student.in", roll: "2401", class: "XII-A", avatar: "PS", color: "#5B9BD5", progress: 78, attendance: 94, score: 82, status: "active", enrolled: 3, lastActive: "2 hr ago", joined: "Jul 2024" },
-  { id: "s2", name: "Rahul Mehta", email: "rahul@student.in", roll: "2402", class: "XII-A", avatar: "RM", color: "#5BAD9B", progress: 65, attendance: 88, score: 74, status: "active", enrolled: 3, lastActive: "5 hr ago", joined: "Jul 2024" },
-  { id: "s3", name: "Ananya Kapoor", email: "ananya@student.in", roll: "2403", class: "XII-B", avatar: "AK", color: "#9B7BC4", progress: 91, attendance: 98, score: 93, status: "active", enrolled: 4, lastActive: "1 hr ago", joined: "Jul 2024" },
-  { id: "s4", name: "Vikram Singh", email: "vikram@student.in", roll: "2404", class: "XII-A", avatar: "VS", color: "#D69E2E", progress: 45, attendance: 72, score: 58, status: "at-risk", enrolled: 2, lastActive: "Yesterday", joined: "Jul 2024" },
-  { id: "s5", name: "Deepika Nair", email: "deepika@student.in", roll: "2405", class: "XII-B", avatar: "DN", color: "#48BB78", progress: 83, attendance: 96, score: 88, status: "active", enrolled: 4, lastActive: "3 hr ago", joined: "Aug 2024" },
-  { id: "s6", name: "Arjun Patel", email: "arjun@student.in", roll: "2406", class: "XII-C", avatar: "AP", color: "#7B8EBF", progress: 52, attendance: 79, score: 61, status: "active", enrolled: 3, lastActive: "2 days ago", joined: "Aug 2024" },
-  { id: "s7", name: "Sneha Gupta", email: "sneha@student.in", roll: "2407", class: "XII-C", avatar: "SG", color: "#BF7B5B", progress: 70, attendance: 91, score: 77, status: "active", enrolled: 3, lastActive: "4 hr ago", joined: "Jul 2024" },
-  { id: "s8", name: "Karan Verma", email: "karan@student.in", roll: "2408", class: "XI-A", avatar: "KV", color: "#5B9BD5", progress: 55, attendance: 68, score: 60, status: "at-risk", enrolled: 2, lastActive: "3 days ago", joined: "Jul 2024" },
-  { id: "s9", name: "Pooja Mishra", email: "pooja@student.in", roll: "2409", class: "XI-B", avatar: "PM", color: "#7B8EBF", progress: 72, attendance: 90, score: 76, status: "active", enrolled: 2, lastActive: "1 day ago", joined: "Aug 2024" },
-  { id: "s10", name: "Rohan Das", email: "rohan@student.in", roll: "2410", class: "XI-A", avatar: "RD", color: "#5BAD9B", progress: 60, attendance: 85, score: 68, status: "active", enrolled: 2, lastActive: "6 hr ago", joined: "Aug 2024" },
-];
-
-const STATUS_FILTERS = ["All", "Active", "At Risk"];
-
-export default function AdminStudents() {
-  const colors = useColors();
+export default function StudentsPage() {
   const insets = useSafeAreaInsets();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [classFilter, setClassFilter] = useState("All");
-  const [selected, setSelected] = useState<typeof INIT_STUDENTS[0] | null>(null);
-  const [showAdd, setShowAdd] = useState(false);
-  const [showAssignClass, setShowAssignClass] = useState(false);
-  const [assignTarget, setAssignTarget] = useState<typeof INIT_STUDENTS[0] | null>(null);
-  const [students, setStudents] = useState(INIT_STUDENTS);
+  const router = useRouter();
+
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("All Students");
+
+  // Form State
+  const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [newRoll, setNewRoll] = useState("");
-  const [newClass, setNewClass] = useState("");
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const [newDob, setNewDob] = useState("");
+  const [newBatch, setNewBatch] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [gender, setGender] = useState("boy");
+  const [feeAmount, setFeeAmount] = useState("");
+  const [feeType, setFeeType] = useState("Monthly");
+  const [submitting, setSubmitting] = useState(false);
+  const [classesList, setClassesList] = useState<DropdownOption[]>([]);
 
-  const classOptions = ["All", ...Array.from(new Set(students.map((s) => s.class))).sort()];
-  const filtered = students.filter((s) => {
-    const ms = search === "" || s.name.toLowerCase().includes(search.toLowerCase()) || s.roll.includes(search);
-    const mf = statusFilter === "All" || (statusFilter === "Active" && s.status === "active") || (statusFilter === "At Risk" && s.status === "at-risk");
-    const mc = classFilter === "All" || s.class === classFilter;
-    return ms && mf && mc;
+  // Password Modal State
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<{id: string, name: string} | null>(null);
+
+  // Profile Modal State
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [selectedProfile, setSelectedProfile] = useState<Student | null>(null);
+
+  const handleUpdatePassword = async (newPassword: string) => {
+    if (!selectedUser) return;
+    await turso.execute({
+      sql: "UPDATE users SET password = ? WHERE id = ?",
+      args: [newPassword, selectedUser.id]
+    });
+  };
+
+  const fetchStudents = async () => {
+    try {
+      setLoading(true);
+      const result = await turso.execute("SELECT id, name, batch, phone, avatar, email, dob, parentId FROM users WHERE role = 'student' ORDER BY createdAt DESC");
+      
+      const colors = ["#3B82F6", "#10B981", "#8B5CF6", "#EC4899", "#F59E0B"];
+      
+      const data: Student[] = result.rows.map((r, i) => ({
+        id: r[0] as string,
+        name: r[1] as string,
+        batch: (r[2] as string) || "Unassigned",
+        phone: (r[3] as string) || "N/A",
+        avatar: (r[4] as string) || null,
+        email: (r[5] as string) || "N/A",
+        dob: (r[6] as string) || "N/A",
+        parentId: (r[7] as string) || "N/A",
+        status: "Active",
+        color: colors[i % colors.length],
+      }));
+      setStudents(data);
+    } catch (e) {
+      console.error("Error fetching students:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchClasses = async () => {
+    try {
+      const result = await turso.execute("SELECT name FROM classes");
+      setClassesList(result.rows.map(r => ({ id: r[0] as string, label: r[0] as string })));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchStudents();
+    fetchClasses();
+  }, []);
+
+
+
+  const handleAddStudent = async () => {
+    if (!newName || !newEmail || !newDob) {
+      alert("Please fill name, email and Date of Birth.");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      
+      // Auto-generate Sequential Student ID
+      const latestStudentRes = await turso.execute("SELECT id FROM users WHERE id LIKE 'STU-%' ORDER BY id DESC LIMIT 1");
+      let newIdNum = 1001;
+      if (latestStudentRes.rows.length > 0) {
+        const lastId = latestStudentRes.rows[0][0] as string; // e.g. "STU-1005"
+        const numPart = parseInt(lastId.split("-")[1], 10);
+        if (!isNaN(numPart)) newIdNum = numPart + 1;
+      }
+      const studentId = `STU-${newIdNum}`;
+      const parentId = `PRN-${newIdNum}`;
+      
+      // Use DOB as password (stripping hyphens to match DDMMYYYY if it comes from the picker)
+      const studentPassword = newDob.replace(/-/g, '');
+
+      // 1. Insert User (Using gender for avatar field)
+      await turso.execute({
+        sql: "INSERT INTO users (id, name, email, password, role, batch, parentId, phone, avatar, dob, createdAt) VALUES (?, ?, ?, ?, 'student', ?, ?, ?, ?, ?, ?)",
+        args: [studentId, newName, newEmail, studentPassword, newBatch, parentId, newPhone, gender, newDob, new Date().toISOString()]
+      });
+
+      // Calculate Due Date based on Fee Type
+      const now = new Date();
+      const dueDateObj = new Date(now);
+      if (feeType === "Monthly") {
+        dueDateObj.setMonth(dueDateObj.getMonth() + 1);
+      } else {
+        dueDateObj.setMonth(dueDateObj.getMonth() + 6); // 6 months for one-time
+      }
+      const calculatedDueDate = dueDateObj.toISOString();
+
+      // 2. Insert Fees Record
+      const feeId = "FEE" + Math.floor(Math.random() * 10000);
+      await turso.execute({
+        sql: "INSERT INTO fees (id, studentId, totalAmount, paymentPlan, paidAmount, nextDueDate, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        args: [feeId, studentId, parseInt(feeAmount) || 0, feeType, 0, calculatedDueDate, "pending", now.toISOString()]
+      });
+
+      // 3. Create In-App Notification Record for Parent
+      const notifId = "NOTIF" + Math.floor(Math.random() * 10000);
+      await turso.execute({
+        sql: "INSERT INTO notifications (id, userId, title, message, read, createdAt) VALUES (?, ?, ?, ?, 0, ?)",
+        args: [notifId, parentId, "Fee Schedule Set", `Your ${feeType} fee of ₹${feeAmount} is scheduled. Next due date is ${dueDateObj.toLocaleDateString()}.`, now.toISOString()]
+      });
+
+      // 4. Schedule OS-level Push Notification
+      try {
+        await scheduleFeeReminderNotification(calculatedDueDate, parseInt(feeAmount) || 0, feeType, newName);
+      } catch (pushErr) {
+        console.log("Failed to schedule push notification (mostly physical device needed)", pushErr);
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      alert("Student added successfully!");
+      
+      setShowAddForm(false);
+      setNewName("");
+      setNewEmail("");
+      setNewDob("");
+      setNewBatch("");
+      setNewPhone("");
+      setGender("boy");
+      setFeeAmount("");
+      setFeeType("Monthly");
+      fetchStudents();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to add student. Ensure email is unique.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredStudents = students.filter(s => {
+    if (filter === "All Students") return true;
+    if (filter === "Defaulters") return s.status === "Defaulter";
+    return s.batch.includes(filter);
   });
 
-  const atRiskCount = students.filter((s) => s.status === "at-risk").length;
-  const avgAttendance = Math.round(students.filter((s) => s.attendance > 0).reduce((a, s) => a + s.attendance, 0) / students.filter((s) => s.attendance > 0).length);
+  // ==========================
+  // ADD FORM VIEW
+  // ==========================
+  if (showAddForm) {
+    return (
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: "#F4F6F8" }}>
+        <LinearGradient colors={["#0EA5E9", "#2563EB"]} style={[styles.header, { paddingTop: Math.max(insets.top, 40) + 30 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View style={styles.decoCircle1} />
+          <View style={styles.decoCircle2} />
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => setShowAddForm(false)} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Add New Student</Text>
+            <View style={{ width: 40 }} />
+          </View>
+        </LinearGradient>
 
-  const assignClass = (studentId: string, cls: string) => {
-    setStudents((prev) => prev.map((s) => s.id === studentId ? { ...s, class: cls } : s));
-    if (assignTarget?.id === studentId) setAssignTarget((prev) => prev ? { ...prev, class: cls } : prev);
-    Haptics.selectionAsync();
-  };
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formScroll}>
+          <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.formCard}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Gender *</Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity 
+                  style={[styles.typeBtn, gender === "boy" && styles.typeBtnActive]} 
+                  onPress={() => setGender("boy")}
+                >
+                  <Text style={[styles.typeBtnText, gender === "boy" && styles.typeBtnTextActive]}>Boy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.typeBtn, gender === "girl" && styles.typeBtnActive]} 
+                  onPress={() => setGender("girl")}
+                >
+                  <Text style={[styles.typeBtnText, gender === "girl" && styles.typeBtnTextActive]}>Girl</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-  const addStudent = () => {
-    if (!newName.trim() || !newRoll.trim()) return;
-    const s = {
-      id: `s${Date.now()}`, name: newName.trim(), email: newEmail.trim() || "",
-      roll: newRoll.trim(), class: newClass.trim() || "XII-A",
-      avatar: newName.trim().split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2),
-      color: "#9B7BC4", progress: 0, attendance: 0, score: 0,
-      status: "active", enrolled: 0, lastActive: "Just joined", joined: "May 2025",
-    };
-    setStudents((prev) => [...prev, s]);
-    setNewName(""); setNewEmail(""); setNewRoll(""); setNewClass("");
-    setShowAdd(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Student Name</Text>
+              <TextInput style={styles.input} placeholder="e.g. Rahul Sharma" value={newName} onChangeText={setNewName} placeholderTextColor="#94A3B8" />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email Address</Text>
+              <TextInput style={styles.input} placeholder="e.g. rahul@example.com" value={newEmail} onChangeText={setNewEmail} autoCapitalize="none" keyboardType="email-address" placeholderTextColor="#94A3B8" />
+            </View>
+            
+            <DropdownSelector
+              label="Assign Class"
+              placeholder="Select Class..."
+              options={classesList}
+              selectedValue={newBatch}
+              onSelect={setNewBatch}
+              icon="school"
+            />
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Phone Number</Text>
+              <TextInput style={styles.input} placeholder="e.g. +91 9876543210" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" placeholderTextColor="#94A3B8" />
+            </View>
 
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Date of Birth *</Text>
+              <DateTimePicker
+                value={newDob}
+                onChange={setNewDob}
+                mode="date"
+                placeholder="Select Date of Birth"
+              />
+              <Text style={styles.hintText}>This will be set as the student's default password.</Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Fee Amount *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. 50000"
+                placeholderTextColor="#9CA3AF"
+                value={feeAmount}
+                onChangeText={setFeeAmount}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Fee Type *</Text>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity 
+                  style={[styles.typeBtn, feeType === "Monthly" && styles.typeBtnActive]} 
+                  onPress={() => setFeeType("Monthly")}
+                >
+                  <Text style={[styles.typeBtnText, feeType === "Monthly" && styles.typeBtnTextActive]}>Monthly</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.typeBtn, feeType === "One-Time" && styles.typeBtnActive]} 
+                  onPress={() => setFeeType("One-Time")}
+                >
+                  <Text style={[styles.typeBtnText, feeType === "One-Time" && styles.typeBtnTextActive]}>One-Time</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.7 }]} onPress={handleAddStudent} disabled={submitting}>
+              {submitting ? (
+                <Text style={styles.submitText}>Saving...</Text>
+              ) : (
+                <Text style={styles.submitText}>Save Student</Text>
+              )}
+            </TouchableOpacity>
+            
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ==========================
+  // LIST VIEW
+  // ==========================
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* ── COLORED BANNER ── */}
-      <View style={[styles.headerBanner, { paddingTop: topPad + 8, backgroundColor: "#9B7BC4", overflow: "hidden" }]}>
-        <View style={[styles.dec1, { backgroundColor: "rgba(255,255,255,0.08)" }]} />
-        <View style={[styles.dec2, { backgroundColor: "rgba(255,255,255,0.06)" }]} />
-        <View style={styles.bannerTop}>
-          <View>
-            <Text style={styles.bannerLabel}>ADMIN PANEL</Text>
-            <Text style={styles.bannerTitle}>Students</Text>
-          </View>
-          <View style={styles.bannerRight}>
-            {atRiskCount > 0 && (
-              <View style={[styles.heroBadge, { backgroundColor: "#E53E3E90" }]}>
-                <Ionicons name="warning" size={11} color="#FFFFFF" />
-                <Text style={styles.heroBadgeText}>{atRiskCount} at risk</Text>
-              </View>
-            )}
-            <TouchableOpacity onPress={() => setShowAdd(true)} style={[styles.addBtn, { backgroundColor: "rgba(255,255,255,0.22)" }]} activeOpacity={0.85}>
-              <Ionicons name="add" size={16} color="#FFFFFF" />
-              <Text style={styles.addBtnText}>Add</Text>
-            </TouchableOpacity>
-          </View>
+    <View style={styles.container}>
+      
+      {/* HEADER */}
+      <LinearGradient colors={["#0EA5E9", "#2563EB"]} style={[styles.header, { paddingTop: Math.max(insets.top, 40) + 30 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <View style={styles.decoCircle1} />
+        <View style={styles.decoCircle2} />
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Student Directory</Text>
+          <TouchableOpacity onPress={() => { Haptics.selectionAsync(); setShowAddForm(true); }} style={styles.addBtn}>
+            <Ionicons name="person-add" size={20} color="#0EA5E9" />
+          </TouchableOpacity>
         </View>
-        <View style={[styles.bannerStrip, { backgroundColor: "rgba(255,255,255,0.15)" }]}>
-          {[
-            { val: students.length, label: "Total", icon: "people" },
-            { val: students.filter((s) => s.status === "active").length, label: "Active", icon: "checkmark-circle" },
-            { val: atRiskCount, label: "At Risk", icon: "warning" },
-            { val: `${avgAttendance}%`, label: "Avg Attend.", icon: "calendar" },
-          ].map((s, i) => (
-            <React.Fragment key={s.label}>
-              <View style={styles.stripStat}>
-                <Ionicons name={s.icon as any} size={12} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.stripVal}>{s.val}</Text>
-                <Text style={styles.stripLabel}>{s.label}</Text>
-              </View>
-              {i < 3 && <View style={[styles.stripDiv, { backgroundColor: "rgba(255,255,255,0.2)" }]} />}
-            </React.Fragment>
-          ))}
-        </View>
-        <View style={[styles.waveCut, { backgroundColor: colors.background }]} />
-      </View>
+      </LinearGradient>
 
-      <View style={[styles.searchWrap, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <View style={[styles.searchBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Ionicons name="search-outline" size={15} color={colors.mutedForeground} />
-          <TextInput value={search} onChangeText={setSearch} placeholder="Search name or roll number…" placeholderTextColor={colors.mutedForeground} style={[styles.searchInput, { color: colors.foreground }]} />
-          {search.length > 0 && <TouchableOpacity onPress={() => setSearch("")}><Ionicons name="close-circle" size={16} color={colors.mutedForeground} /></TouchableOpacity>}
+      {/* FLOATING SEARCH */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={20} color="#64748B" />
+          <TextInput style={styles.searchInput} placeholder="Search by name, phone or batch..." placeholderTextColor="#94A3B8" />
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.chipRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 8, gap: 8 }}>
-        {STATUS_FILTERS.map((f) => (
-          <TouchableOpacity key={f} onPress={() => setStatusFilter(f)} style={[styles.chip, { backgroundColor: statusFilter === f ? "#9B7BC4" : colors.muted, borderColor: statusFilter === f ? "#9B7BC4" : colors.border }]} activeOpacity={0.8}>
-            <Text style={[styles.chipText, { color: statusFilter === f ? "#FFFFFF" : colors.mutedForeground }]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
-        <View style={[styles.chipDivider, { backgroundColor: colors.border }]} />
-        {classOptions.map((c) => (
-          <TouchableOpacity key={c} onPress={() => setClassFilter(c)} style={[styles.chip, { backgroundColor: classFilter === c ? "#5B9BD5" : colors.muted, borderColor: classFilter === c ? "#5B9BD5" : colors.border }]} activeOpacity={0.8}>
-            <Text style={[styles.chipText, { color: classFilter === c ? "#FFFFFF" : colors.mutedForeground }]}>{c}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}>
-        {filtered.map((s) => (
-          <TouchableOpacity key={s.id} onPress={() => { setSelected(s); Haptics.selectionAsync(); }} style={[styles.studentCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: "#000" }]} activeOpacity={0.85}>
-            {s.status === "at-risk" && <View style={[styles.riskStripe, { backgroundColor: "#E53E3E" }]} />}
-            <View style={styles.cardInner}>
-              <View style={[styles.avatarRing, { borderColor: s.color + "40" }]}>
-                <View style={[styles.avatar, { backgroundColor: s.color }]}>
-                  <Text style={styles.avatarText}>{s.avatar}</Text>
-                </View>
-              </View>
-              <View style={styles.studentInfo}>
-                <View style={styles.nameRow}>
-                  <Text style={[styles.studentName, { color: colors.foreground }]}>{s.name}</Text>
-                  <View style={[styles.classBadge, { backgroundColor: s.color + "18" }]}>
-                    <Text style={[styles.classBadgeText, { color: s.color }]}>{s.class}</Text>
-                  </View>
-                  {s.status === "at-risk" && (
-                    <View style={[styles.riskBadge, { backgroundColor: "#FFF5F5" }]}>
-                      <Ionicons name="warning" size={9} color="#E53E3E" />
-                      <Text style={[styles.riskText, { color: "#E53E3E" }]}>At Risk</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={[styles.rollText, { color: colors.mutedForeground }]}>Roll #{s.roll} • {s.lastActive}</Text>
-                <View style={styles.miniStatsRow}>
-                  {[
-                    { val: `${s.progress}%`, label: "Progress", color: s.progress >= 75 ? "#48BB78" : s.progress >= 50 ? "#D69E2E" : "#E53E3E" },
-                    { val: `${s.attendance}%`, label: "Attend.", color: s.attendance >= 85 ? "#48BB78" : "#D69E2E" },
-                    { val: `${s.score}%`, label: "Avg Score", color: "#5B9BD5" },
-                  ].map((m) => (
-                    <View key={m.label} style={[styles.miniStat, { backgroundColor: m.color + "12" }]}>
-                      <Text style={[styles.miniStatVal, { color: m.color }]}>{m.val}</Text>
-                      <Text style={[styles.miniStatLabel, { color: colors.mutedForeground }]}>{m.label}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.border} />
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Detail Modal */}
-      <Modal visible={!!selected} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-            {selected && (
-              <>
-                <View style={styles.modalHeader}>
-                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Student Details</Text>
-                  <TouchableOpacity onPress={() => setSelected(null)}>
-                    <Ionicons name="close" size={22} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                </View>
-                <View style={[styles.modalHero, { backgroundColor: selected.color + "12" }]}>
-                  <View style={[styles.bigAvatar, { backgroundColor: selected.color }]}><Text style={styles.bigAvatarText}>{selected.avatar}</Text></View>
-                  <Text style={[styles.modalName, { color: colors.foreground }]}>{selected.name}</Text>
-                  <View style={[styles.classBadge, { backgroundColor: selected.color + "18" }]}>
-                    <Text style={[styles.classBadgeText, { color: selected.color }]}>{selected.class} • Roll #{selected.roll}</Text>
-                  </View>
-                </View>
-                {[
-                  { label: "Email", val: selected.email || "—" },
-                  { label: "Enrolled Courses", val: `${selected.enrolled}` },
-                  { label: "Overall Progress", val: `${selected.progress}%` },
-                  { label: "Attendance", val: `${selected.attendance}%` },
-                  { label: "Avg Test Score", val: `${selected.score}%` },
-                  { label: "Joined", val: selected.joined },
-                ].map((r) => (
-                  <View key={r.label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
-                    <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>{r.label}</Text>
-                    <Text style={[styles.detailVal, { color: colors.foreground }]}>{r.val}</Text>
-                  </View>
-                ))}
-                <View style={styles.modalActions}>
-                  <TouchableOpacity onPress={() => { setAssignTarget(selected); setSelected(null); setShowAssignClass(true); }} style={[styles.actionBtn, { backgroundColor: "#5B9BD518", borderColor: "#5B9BD530" }]} activeOpacity={0.8}>
-                    <Ionicons name="school" size={14} color="#5B9BD5" />
-                    <Text style={[styles.actionBtnText, { color: "#5B9BD5" }]}>Change Class</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.actionBtn, { backgroundColor: "#9B7BC418", borderColor: "#9B7BC430" }]} activeOpacity={0.8} onPress={() => setSelected(null)}>
-                    <Ionicons name="mail-outline" size={14} color="#9B7BC4" />
-                    <Text style={[styles.actionBtnText, { color: "#9B7BC4" }]}>Message</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Assign Class Modal */}
-      <Modal visible={showAssignClass} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Change Class</Text>
-              <TouchableOpacity onPress={() => { setShowAssignClass(false); setAssignTarget(null); }}>
-                <Ionicons name="close" size={22} color={colors.mutedForeground} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        
+        {/* FILTERS */}
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.filterScroll}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 20 }}>
+            {["All Students", "Class 12", "Class 11", "Defaulters"].map((f, i) => (
+              <TouchableOpacity key={i} onPress={() => setFilter(f)} style={[styles.filterChip, filter === f && styles.filterChipActive]}>
+                <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>{f}</Text>
               </TouchableOpacity>
-            </View>
-            {assignTarget && <Text style={[styles.assignHint, { color: colors.mutedForeground }]}>Select a class for {assignTarget.name} (currently {assignTarget.class})</Text>}
-            <View style={styles.classGrid}>
-              {ALL_CLASSES.map((cls) => {
-                const isCurrent = assignTarget?.class === cls;
-                return (
-                  <TouchableOpacity key={cls} onPress={() => { assignTarget && assignClass(assignTarget.id, cls); }} style={[styles.classOption, { backgroundColor: isCurrent ? "#9B7BC4" : colors.muted, borderColor: isCurrent ? "#9B7BC4" : colors.border }]} activeOpacity={0.8}>
-                    <Ionicons name={isCurrent ? "checkmark-circle" : "ellipse-outline"} size={15} color={isCurrent ? "#FFFFFF" : colors.mutedForeground} />
-                    <Text style={[styles.classOptionText, { color: isCurrent ? "#FFFFFF" : colors.foreground }]}>{cls}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <TouchableOpacity onPress={() => { setShowAssignClass(false); setAssignTarget(null); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }} style={[styles.submitBtn, { backgroundColor: "#9B7BC4" }]} activeOpacity={0.85}>
-              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-              <Text style={styles.submitBtnText}>Confirm</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add Student Modal */}
-      <Modal visible={showAdd} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Add New Student</Text>
-              <TouchableOpacity onPress={() => setShowAdd(false)}>
-                <Ionicons name="close" size={22} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-            {[
-              { label: "Full Name *", val: newName, set: setNewName, ph: "e.g. Ritu Sharma" },
-              { label: "Email Address", val: newEmail, set: setNewEmail, ph: "student@school.in" },
-              { label: "Roll Number *", val: newRoll, set: setNewRoll, ph: "e.g. 2411" },
-              { label: "Class", val: newClass, set: setNewClass, ph: "e.g. XII-A" },
-            ].map((f) => (
-              <View key={f.label} style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{f.label}</Text>
-                <View style={[styles.inputRow, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                  <TextInput value={f.val} onChangeText={f.set} placeholder={f.ph} placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground }]} />
-                </View>
-              </View>
             ))}
-            <TouchableOpacity onPress={addStudent} style={[styles.submitBtn, { backgroundColor: "#9B7BC4", opacity: newName.trim() && newRoll.trim() ? 1 : 0.5 }]} activeOpacity={0.85} disabled={!newName.trim() || !newRoll.trim()}>
-              <Ionicons name="person-add" size={16} color="#FFFFFF" />
-              <Text style={styles.submitBtnText}>Add Student</Text>
-            </TouchableOpacity>
+          </ScrollView>
+        </Animated.View>
+
+        {/* STUDENT LIST */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
+          <View style={styles.cardBlock}>
+            {loading ? (
+              <View style={{ padding: 20, alignItems: "center" }}><ActivityIndicator color="#0EA5E9" /></View>
+            ) : filteredStudents.length === 0 ? (
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_500Medium", color: "#94A3B8" }}>No students found.</Text>
+              </View>
+            ) : (
+              filteredStudents.map((s, i) => (
+                <View key={s.id} style={[styles.listItem, i === filteredStudents.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={[styles.avatar, { backgroundColor: s.color + "15", overflow: "hidden" }]}>
+                    {s.avatar === 'boy' ? (
+                      <Image source={{ uri: "https://avatar.iran.liara.run/public/boy" }} style={{ width: '100%', height: '100%' }} />
+                    ) : s.avatar === 'girl' ? (
+                      <Image source={{ uri: "https://avatar.iran.liara.run/public/girl" }} style={{ width: '100%', height: '100%' }} />
+                    ) : s.avatar ? (
+                      <Image source={{ uri: s.avatar }} style={{ width: '100%', height: '100%' }} />
+                    ) : (
+                      <Text style={[styles.avatarText, { color: s.color }]}>{s.name.charAt(0).toUpperCase()}</Text>
+                    )}
+                  </View>
+                  <View style={styles.listTextWrap}>
+                    <Text style={styles.listTitle}>{s.name}</Text>
+                    <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 11, color: "#0EA5E9", marginBottom: 2 }}>{s.id}</Text>
+                    <Text style={styles.listDesc}>{s.batch}</Text>
+                    <Text style={styles.listPhone}><Ionicons name="call" size={10}/> {s.phone}</Text>
+                  </View>
+                  <View style={[styles.listRight, { flexDirection: "row", alignItems: "center" }]}>
+                    <TouchableOpacity style={styles.passwordBtn} onPress={() => { setSelectedUser({id: s.id, name: s.name}); setPasswordModalVisible(true); }}>
+                      <Ionicons name="key" size={16} color="#0EA5E9" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.viewBtn, { backgroundColor: "#0EA5E9" }]} onPress={() => { setSelectedProfile(s); setProfileModalVisible(true); }}>
+                      <Text style={[styles.viewBtnText, { color: "#FFFFFF" }]}>Profile</Text>
+                      <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </Animated.View>
+
+      </ScrollView>
+
+      {selectedUser && (
+        <ChangePasswordModal
+          visible={passwordModalVisible}
+          onClose={() => setPasswordModalVisible(false)}
+          userId={selectedUser.id}
+          userName={selectedUser.name}
+          themeColor="#0EA5E9"
+          onSave={handleUpdatePassword}
+        />
+      )}
+
+      {/* STUDENT PROFILE MODAL */}
+      <Modal visible={profileModalVisible} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#FFF", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, maxHeight: "85%" }}>
+            
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setProfileModalVisible(false)} style={{ backgroundColor: "#F1F5F9", width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center" }}>
+                <Ionicons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {selectedProfile && (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                {/* Header Profile Info */}
+                <View style={{ alignItems: "center", marginBottom: 30 }}>
+                  <View style={[styles.avatar, { width: 100, height: 100, borderRadius: 50, marginBottom: 16, backgroundColor: selectedProfile.color + "15", borderWidth: 4, borderColor: "#F1F5F9" }]}>
+                    {selectedProfile.avatar === 'boy' ? (
+                      <Image source={{ uri: "https://avatar.iran.liara.run/public/boy" }} style={{ width: '100%', height: '100%' }} />
+                    ) : selectedProfile.avatar === 'girl' ? (
+                      <Image source={{ uri: "https://avatar.iran.liara.run/public/girl" }} style={{ width: '100%', height: '100%' }} />
+                    ) : selectedProfile.avatar ? (
+                      <Image source={{ uri: selectedProfile.avatar }} style={{ width: '100%', height: '100%' }} />
+                    ) : (
+                      <Text style={[styles.avatarText, { color: selectedProfile.color, fontSize: 36 }]}>{selectedProfile.name.charAt(0).toUpperCase()}</Text>
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 22, fontFamily: "Poppins_700Bold", color: "#0F172A", marginBottom: 4 }}>{selectedProfile.name}</Text>
+                  <Text style={{ fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0EA5E9" }}>ID: {selectedProfile.id}</Text>
+                </View>
+
+                {/* Details Section */}
+                <Text style={{ fontSize: 14, fontFamily: "Poppins_700Bold", color: "#64748B", marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Academic Info</Text>
+                <View style={{ backgroundColor: "#F8FAFC", borderRadius: 20, padding: 16, marginBottom: 24 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B" }}>Class / Batch</Text>
+                    <Text style={{ fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" }}>{selectedProfile.batch}</Text>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: "#E2E8F0", marginBottom: 12 }} />
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B" }}>Status</Text>
+                    <View style={{ backgroundColor: "#10B98115", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                      <Text style={{ fontSize: 12, fontFamily: "Poppins_700Bold", color: "#10B981" }}>{selectedProfile.status}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={{ fontSize: 14, fontFamily: "Poppins_700Bold", color: "#64748B", marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Personal Info</Text>
+                <View style={{ backgroundColor: "#F8FAFC", borderRadius: 20, padding: 16 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#E0F2FE", justifyContent: "center", alignItems: "center" }}><Ionicons name="call" size={18} color="#0EA5E9" /></View>
+                      <Text style={{ fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B" }}>Phone</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" }}>{selectedProfile.phone}</Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F3E8FF", justifyContent: "center", alignItems: "center" }}><Ionicons name="mail" size={18} color="#8B5CF6" /></View>
+                      <Text style={{ fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B" }}>Email</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" }}>{selectedProfile.email}</Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#FEF3C7", justifyContent: "center", alignItems: "center" }}><Ionicons name="calendar" size={18} color="#D97706" /></View>
+                      <Text style={{ fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B" }}>Date of Birth</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" }}>{selectedProfile.dob}</Text>
+                  </View>
+
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#D1FAE5", justifyContent: "center", alignItems: "center" }}><Ionicons name="people" size={18} color="#10B981" /></View>
+                      <Text style={{ fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B" }}>Parent ID</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" }}>{selectedProfile.parentId}</Text>
+                  </View>
+                </View>
+
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  headerBanner: { paddingHorizontal: 16, paddingBottom: 30, position: "relative" },
-  dec1: { position: "absolute", width: 220, height: 220, borderRadius: 110, top: -60, right: -50 },
-  dec2: { position: "absolute", width: 130, height: 130, borderRadius: 65, bottom: -30, left: -20 },
-  bannerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, zIndex: 1 },
-  bannerLabel: { color: "rgba(255,255,255,0.7)", fontSize: 9, fontFamily: "Poppins_700Bold", letterSpacing: 1.2, marginBottom: 2 },
-  bannerTitle: { color: "#FFFFFF", fontSize: 22, fontFamily: "Poppins_700Bold" },
-  bannerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
-  heroBadge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 20 },
-  heroBadgeText: { color: "#FFFFFF", fontSize: 10, fontFamily: "Poppins_600SemiBold" },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
-  addBtnText: { color: "#FFFFFF", fontSize: 12, fontFamily: "Poppins_700Bold" },
-  bannerStrip: { flexDirection: "row", alignItems: "center", borderRadius: 16, padding: 12, zIndex: 1 },
-  stripStat: { flex: 1, alignItems: "center", gap: 2 },
-  stripVal: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
-  stripLabel: { color: "rgba(255,255,255,0.75)", fontSize: 9, fontFamily: "Poppins_400Regular" },
-  stripDiv: { width: 1, height: 28 },
-  waveCut: { position: "absolute", bottom: 0, left: 0, right: 0, height: 14, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  searchWrap: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
-  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 14, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
-  searchInput: { flex: 1, fontSize: 13, fontFamily: "Poppins_400Regular" },
-  chipRow: { maxHeight: 52, borderBottomWidth: 1 },
-  chip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
-  chipText: { fontSize: 12, fontFamily: "Poppins_600SemiBold" },
-  chipDivider: { width: 1, marginVertical: 8 },
-  scroll: { paddingHorizontal: 16, paddingTop: 14, gap: 0 },
-  studentCard: { borderRadius: 16, borderWidth: 1, marginBottom: 10, overflow: "hidden", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  riskStripe: { height: 3 },
-  cardInner: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
-  avatarRing: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, justifyContent: "center", alignItems: "center", flexShrink: 0 },
-  avatar: { width: 42, height: 42, borderRadius: 21, justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#FFFFFF", fontSize: 13, fontFamily: "Poppins_700Bold" },
-  studentInfo: { flex: 1, gap: 4 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  studentName: { fontSize: 13, fontFamily: "Poppins_700Bold" },
-  classBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
-  classBadgeText: { fontSize: 9, fontFamily: "Poppins_600SemiBold" },
-  riskBadge: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 7 },
-  riskText: { fontSize: 9, fontFamily: "Poppins_700Bold" },
-  rollText: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  miniStatsRow: { flexDirection: "row", gap: 6 },
-  miniStat: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, alignItems: "center" },
-  miniStatVal: { fontSize: 11, fontFamily: "Poppins_700Bold" },
-  miniStatLabel: { fontSize: 8, fontFamily: "Poppins_400Regular" },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  modalSheet: { borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, gap: 10, maxHeight: "92%" },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
-  modalTitle: { fontSize: 17, fontFamily: "Poppins_700Bold" },
-  modalHero: { alignItems: "center", gap: 6, borderRadius: 16, paddingVertical: 16 },
-  bigAvatar: { width: 62, height: 62, borderRadius: 31, justifyContent: "center", alignItems: "center", marginBottom: 2 },
-  bigAvatarText: { color: "#FFFFFF", fontSize: 20, fontFamily: "Poppins_700Bold" },
-  modalName: { fontSize: 17, fontFamily: "Poppins_700Bold" },
-  detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 9, borderBottomWidth: 1 },
-  detailLabel: { fontSize: 12, fontFamily: "Poppins_400Regular" },
-  detailVal: { fontSize: 12, fontFamily: "Poppins_600SemiBold" },
-  modalActions: { flexDirection: "row", gap: 10, marginTop: 4 },
-  actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 12, borderRadius: 13, borderWidth: 1 },
-  actionBtnText: { fontSize: 12, fontFamily: "Poppins_700Bold" },
-  assignHint: { fontSize: 11, fontFamily: "Poppins_400Regular", marginTop: -4 },
-  classGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  classOption: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, borderWidth: 1, minWidth: "28%" },
-  classOptionText: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
-  fieldGroup: { gap: 4 },
-  fieldLabel: { fontSize: 11, fontFamily: "Poppins_600SemiBold", marginLeft: 2 },
-  inputRow: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
-  input: { fontSize: 13, fontFamily: "Poppins_400Regular" },
-  submitBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: 14, paddingVertical: 14, marginTop: 4 },
-  submitBtnText: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
+  container: { flex: 1, backgroundColor: "#F4F6F8" }, 
+  header: { paddingHorizontal: 20, paddingBottom: 16, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, position: "relative", overflow: "hidden" },
+  decoCircle1: { position: "absolute", top: -50, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.15)" },
+  decoCircle2: { position: "absolute", bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.1)" },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 2 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFF", justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+  headerTitle: { fontSize: 20, fontFamily: "Poppins_700Bold", color: "#FFFFFF" },
+  
+  searchContainer: { marginTop: -12, paddingHorizontal: 20, zIndex: 10 },
+  searchBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, gap: 10, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 5 },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Poppins_400Regular", color: "#0F172A", padding: 0 },
+
+  scroll: { paddingBottom: 100 },
+  
+  filterScroll: { marginTop: 24, marginBottom: 20, paddingVertical: 10 },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: "#E2E8F0", borderRadius: 20 },
+  filterChipActive: { backgroundColor: "#0EA5E9" },
+  filterText: { fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#64748B" },
+  filterTextActive: { color: "#FFF" },
+  hintText: { fontSize: 12, fontFamily: "Poppins_400Regular", color: "#94A3B8", marginLeft: 4, marginTop: 4 },
+
+  section: { paddingHorizontal: 20, marginBottom: 30 },
+  cardBlock: { backgroundColor: "#FFFFFF", borderRadius: 24, paddingHorizontal: 18, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 },
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 14 },
+  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: "center", alignItems: "center" },
+  avatarText: { fontSize: 18, fontFamily: "Poppins_700Bold" },
+  listTextWrap: { flex: 1 },
+  listTitle: { fontSize: 15, fontFamily: "Poppins_600SemiBold", color: "#0F172A", marginBottom: 2 },
+  listDesc: { fontSize: 13, fontFamily: "Poppins_400Regular", color: "#64748B" },
+  listPhone: { fontSize: 11, fontFamily: "Poppins_500Medium", color: "#94A3B8", marginTop: 4 },
+  listRight: { alignItems: "center" },
+  
+  passwordBtn: { backgroundColor: "#E0F2FE", width: 36, height: 36, borderRadius: 12, justifyContent: "center", alignItems: "center", marginRight: 8 },
+  
+  statusPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 },
+  statusText: { fontSize: 10, fontFamily: "Poppins_700Bold" },
+  viewBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2 },
+  viewBtnText: { fontSize: 11, fontFamily: "Poppins_600SemiBold" },
+
+  // FORM STYLES
+  formScroll: { padding: 20, paddingBottom: 60 },
+  formCard: { backgroundColor: "#FFF", borderRadius: 24, padding: 24, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 4 },
+  
+  photoPickerContainer: { alignItems: "center", marginBottom: 30, position: "relative" },
+  photoPickerBtn: { width: 120, height: 120, borderRadius: 60, backgroundColor: "#F8FAFC", overflow: "hidden", borderWidth: 2, borderColor: "#E2E8F0", borderStyle: "dashed", justifyContent: "center", alignItems: "center" },
+  photoPlaceholder: { alignItems: "center" },
+  photoPickerText: { fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#64748B", marginTop: 8 },
+  photoPickerSubText: { fontSize: 11, fontFamily: "Poppins_400Regular", color: "#94A3B8" },
+  photoPreview: { width: "100%", height: "100%" },
+  removePhotoBtn: { position: "absolute", top: 0, right: "25%", backgroundColor: "#FFF", borderRadius: 14, padding: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+
+  inputGroup: { marginBottom: 20 },
+  label: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#334155", marginBottom: 8, marginLeft: 4 },
+  input: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 16, fontSize: 15, fontFamily: "Poppins_400Regular", color: "#0F172A" },
+  
+  submitBtn: { backgroundColor: "#0EA5E9", borderRadius: 16, paddingVertical: 18, alignItems: "center", marginTop: 10, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  submitText: { color: "#FFFFFF", fontSize: 16, fontFamily: "Poppins_700Bold" },
+
+  typeBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#F1F5F9", alignItems: "center", borderWidth: 1, borderColor: "#E2E8F0" },
+  typeBtnActive: { backgroundColor: "#E0F2FE", borderColor: "#0EA5E9" },
+  typeBtnText: { fontFamily: "Poppins_500Medium", fontSize: 14, color: "#64748B" },
+  typeBtnTextActive: { color: "#0EA5E9", fontFamily: "Poppins_600SemiBold" },
 });
+
+
+
+

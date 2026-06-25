@@ -1,147 +1,116 @@
-import { BlurView } from "expo-blur";
-import { isLiquidGlassAvailable } from "expo-glass-effect";
-import { Tabs } from "expo-router";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
-import { SymbolView } from "expo-symbols";
-import { Feather, Ionicons } from "@expo/vector-icons";
-import React, { useContext } from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
-
+import { Tabs, usePathname } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import React from "react";
+import { Platform, StyleSheet, View, Text } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { ThemeContext } from "@/context/ThemeContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BlurView } from "expo-blur";
 
-function NativeTabLayout() {
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "house", selected: "house.fill" }} />
-        <Label>Home</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="courses">
-        <Icon sf={{ default: "book", selected: "book.fill" }} />
-        <Label>Courses</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="live">
-        <Icon sf={{ default: "video", selected: "video.fill" }} />
-        <Label>Live</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="tests">
-        <Icon sf={{ default: "checkmark.circle", selected: "checkmark.circle.fill" }} />
-        <Label>Tests</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: "person", selected: "person.fill" }} />
-        <Label>Profile</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
+const ACCENT = "#0EA5E9";
 
-function ClassicTabLayout() {
+export default function TabLayout() {
   const colors = useColors();
-  const { theme } = useContext(ThemeContext);
+  const { theme } = React.useContext(ThemeContext);
   const isDark = theme === "dark";
-  const isIOS = Platform.OS === "ios";
-  const isWeb = Platform.OS === "web";
+  const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  
+  const bottomPadding = Platform.OS === "android" ? Math.max(insets.bottom, 12) : insets.bottom;
+  const tabHeight = Platform.OS === "web" ? 84 : 60 + bottomPadding;
+
+  const isDashboardActive = !pathname.includes("doubts") && !pathname.includes("results") && !pathname.includes("homework") && !pathname.includes("fees") && !pathname.includes("profile");
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: ACCENT,
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : colors.card,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
+          backgroundColor: Platform.OS === "android" ? colors.card : "transparent",
+          borderTopWidth: 0,
           elevation: 0,
-          ...(isWeb ? { height: 84 } : {}),
+          shadowOpacity: 0,
+          height: tabHeight,
+          paddingBottom: bottomPadding,
         },
-        tabBarBackground: () =>
-          isIOS ? (
-            <BlurView
-              intensity={95}
-              tint={isDark ? "dark" : "light"}
-              style={StyleSheet.absoluteFill}
-            />
-          ) : (
+        tabBarBackground: () => (
+          Platform.OS === "android" ? (
             <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border }]} />
-          ),
+          ) : (
+            <BlurView intensity={90} tint={isDark ? "dark" : "light"} style={[StyleSheet.absoluteFill, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]} />
+          )
+        ),
         tabBarLabelStyle: {
-          fontFamily: "Poppins_500Medium",
+          fontFamily: "Poppins_600SemiBold",
           fontSize: 10,
-          marginBottom: 2,
+          marginTop: -2,
         },
+        tabBarIconStyle: { marginTop: 4 },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) =>
-            Platform.OS === "ios" ? (
-              <SymbolView name="house" tintColor={color} size={23} />
-            ) : (
-              <Feather name="home" size={21} color={color} />
-            ),
+          tabBarIcon: ({ color, focused }) => {
+            const active = focused || isDashboardActive;
+            return <Ionicons name={active ? "home" : "home-outline"} size={22} color={active ? ACCENT : color} />;
+          },
+          tabBarLabel: ({ color, focused }) => {
+            const active = focused || isDashboardActive;
+            return <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: active ? ACCENT : color, fontFamily: "Poppins_600SemiBold", fontSize: 10, marginTop: -2 }}>Home</Text>;
+          }
         }}
       />
       <Tabs.Screen
-        name="courses"
+        name="doubts"
         options={{
-          title: "Courses",
-          tabBarIcon: ({ color }) =>
-            Platform.OS === "ios" ? (
-              <SymbolView name="book" tintColor={color} size={23} />
-            ) : (
-              <Ionicons name="book-outline" size={21} color={color} />
-            ),
+          title: "Doubts",
+          tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "help-circle" : "help-circle-outline"} size={22} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="live"
+        name="results"
         options={{
-          title: "Live",
-          tabBarIcon: ({ color }) =>
-            Platform.OS === "ios" ? (
-              <SymbolView name="video" tintColor={color} size={23} />
-            ) : (
-              <Ionicons name="videocam-outline" size={21} color={color} />
-            ),
+          title: "Results",
+          tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "podium" : "podium-outline"} size={22} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="tests"
+        name="homework"
         options={{
-          title: "Tests",
-          tabBarIcon: ({ color }) =>
-            Platform.OS === "ios" ? (
-              <SymbolView name="checkmark.circle" tintColor={color} size={23} />
-            ) : (
-              <Ionicons name="clipboard-outline" size={21} color={color} />
-            ),
+          title: "Homework",
+          tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "pencil" : "pencil-outline"} size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="fees"
+        options={{
+          title: "Fees",
+          tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "card" : "card-outline"} size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color }) =>
-            Platform.OS === "ios" ? (
-              <SymbolView name="person" tintColor={color} size={23} />
-            ) : (
-              <Ionicons name="person-outline" size={21} color={color} />
-            ),
+          tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "person" : "person-outline"} size={22} color={color} />,
         }}
       />
+      
+      {/* Hidden tabs */}
+      <Tabs.Screen name="courses" options={{ href: null }} />
+      <Tabs.Screen name="notifications" options={{ href: null }} />
+      <Tabs.Screen name="library" options={{ href: null }} />
+      <Tabs.Screen name="leaderboard" options={{ href: null }} />
+      <Tabs.Screen name="materials" options={{ href: null }} />
+      <Tabs.Screen name="timetable" options={{ href: null }} />
+      <Tabs.Screen name="tests" options={{ href: null }} />
+      <Tabs.Screen name="attendance" options={{ href: null }} />
     </Tabs>
   );
 }
 
-export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
-  }
-  return <ClassicTabLayout />;
-}

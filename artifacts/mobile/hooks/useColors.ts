@@ -10,7 +10,7 @@ export function useColors() {
   const { theme } = useContext(ThemeContext);
   const palette =
     theme === "dark" && "dark" in colors
-      ? (colors as Record<string, typeof colors.light>).dark
+      ? (colors as any).dark
       : colors.light;
   return { ...palette, radius: colors.radius };
 }

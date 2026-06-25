@@ -48,8 +48,8 @@ export default function LoginScreen() {
         <View style={styles.logoRow}>
           <VidyaPathLogo size={48} color={colors.primary} />
           <View>
-            <Text style={[styles.appName, { color: colors.foreground }]}>VidyaPath</Text>
-            <Text style={[styles.appSub, { color: colors.mutedForeground }]}>Class 11–12 LMS</Text>
+            <Text style={[styles.appName, { color: colors.foreground }]}>Webvibezzz</Text>
+            <Text style={[styles.appSub, { color: colors.mutedForeground }]}>Academy</Text>
           </View>
         </View>
 
@@ -125,20 +125,37 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Info note */}
-        <View style={[styles.infoBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Ionicons name="information-circle-outline" size={15} color={colors.primary} />
-          <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-            Your role (Student / Teacher / Admin) is determined automatically by your login credentials.
-          </Text>
+        {/* Demo Quick-Login */}
+        <View style={[styles.demoBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.demoHeader}>
+            <Ionicons name="flash" size={14} color="#D69E2E" />
+            <Text style={[styles.demoTitle, { color: colors.foreground }]}>Quick Demo Login</Text>
+          </View>
+          <Text style={[styles.demoHint, { color: colors.mutedForeground }]}>Tap any role to auto-fill credentials</Text>
+          <View style={styles.demoRoles}>
+            {[
+              { label: "Student", email: "student@vidyapath.in", icon: "school", color: "#5B9BD5" },
+              { label: "Teacher", email: "teacher@vidyapath.in", icon: "person", color: "#48BB78" },
+              { label: "Admin", email: "admin@vidyapath.in", icon: "shield-checkmark", color: "#9B7BC4" },
+              { label: "Parent", email: "parent@vidyapath.in", icon: "people", color: "#F59E0B" },
+            ].map((r) => (
+              <TouchableOpacity
+                key={r.label}
+                onPress={() => { setEmail(r.email); setPassword("vidya123"); setError(""); Haptics.selectionAsync(); }}
+                style={[styles.demoRole, { backgroundColor: r.color + "15", borderColor: r.color + "40" }]}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={r.icon as any} size={16} color={r.color} />
+                <Text style={[styles.demoRoleText, { color: r.color }]}>{r.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={[styles.demoPass, { color: colors.mutedForeground }]}>Password: <Text style={{ fontFamily: "Poppins_700Bold", color: colors.foreground }}>vidya123</Text></Text>
         </View>
 
         {/* CBSE badge */}
         <View style={styles.badges}>
-          <View style={[styles.badge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-            <Ionicons name="ribbon" size={12} color={colors.primary} />
-            <Text style={[styles.badgeText, { color: colors.mutedForeground }]}>CBSE Aligned 2025–26</Text>
-          </View>
+
           <View style={[styles.badge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             <Ionicons name="shield-checkmark" size={12} color={colors.success} />
             <Text style={[styles.badgeText, { color: colors.mutedForeground }]}>Secure Login</Text>
@@ -175,4 +192,12 @@ const styles = StyleSheet.create({
   badges: { flexDirection: "row", gap: 8, justifyContent: "center", marginTop: 4 },
   badge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
   badgeText: { fontSize: 10, fontFamily: "Poppins_400Regular" },
+  demoBox: { borderRadius: 16, borderWidth: 1, padding: 14, marginBottom: 16, gap: 8 },
+  demoHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  demoTitle: { fontSize: 13, fontFamily: "Poppins_700Bold" },
+  demoHint: { fontSize: 11, fontFamily: "Poppins_400Regular" },
+  demoRoles: { flexDirection: "row", gap: 8 },
+  demoRole: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 9, borderRadius: 12, borderWidth: 1 },
+  demoRoleText: { fontSize: 12, fontFamily: "Poppins_700Bold" },
+  demoPass: { fontSize: 11, fontFamily: "Poppins_400Regular", textAlign: "center" },
 });

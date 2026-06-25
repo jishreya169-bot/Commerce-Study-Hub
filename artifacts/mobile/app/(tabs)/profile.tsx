@@ -1,333 +1,391 @@
-import React, { useContext, useState } from "react";
-import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, useWindowDimensions,
-} from "react-native";
+import React, { useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Modal } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import { useColors } from "@/hooks/useColors";
-import { useApp } from "@/context/AppContext";
-import { ThemeContext } from "@/context/ThemeContext";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown, Layout, SlideInDown, SlideOutUp } from "react-native-reanimated";
+import { useAuth } from "@/context/AuthContext";
+import { Image } from "expo-image";
 
-const ACHIEVEMENTS = [
-  { icon: "flame" as const, label: "14 Day Streak", desc: "Keep it up!", color: "#F59E0B", bg: "#FEF3C7" },
-  { icon: "trophy" as const, label: "Top 50 Rank", desc: "Class topper", color: "#0EA5E9", bg: "#E0F2FE" },
-  { icon: "star" as const, label: "3850 Points", desc: "XP earned", color: "#10B981", bg: "#D1FAE5" },
-  { icon: "ribbon" as const, label: "Tests Cleared", desc: "12 completed", color: "#8B5CF6", bg: "#EDE9FE" },
-  { icon: "book" as const, label: "5 Courses", desc: "Enrolled", color: "#5B9BD5", bg: "#EFF6FF" },
-  { icon: "checkmark-circle" as const, label: "90% Avg", desc: "Test scores", color: "#48BB78", bg: "#F0FFF4" },
-];
-
-const SUBJECT_PROGRESS = [
-  { subject: "Accountancy", progress: 78, color: "#5B9BD5", icon: "calculator" },
-  { subject: "Economics", progress: 65, color: "#5BAD9B", icon: "trending-up" },
-  { subject: "Business Studies", progress: 82, color: "#9B7BC4", icon: "briefcase" },
-  { subject: "English", progress: 91, color: "#BF7B5B", icon: "book" },
-];
-
-interface RowProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  rightEl?: React.ReactNode;
-  accent?: string;
-  last?: boolean;
-}
-
-function SettingRow({ icon, label, value, onPress, rightEl, accent, last }: RowProps) {
-  const colors = useColors();
-  const color = accent ?? colors.primary;
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-      style={[styles.row, { borderBottomColor: last ? "transparent" : colors.border }]}
-    >
-      <View style={[styles.rowIcon, { backgroundColor: color + "18" }]}>
-        <Ionicons name={icon} size={17} color={color} />
-      </View>
-      <Text style={[styles.rowLabel, { color: colors.foreground }]}>{label}</Text>
-      <View style={styles.rowRight}>
-        {value && <Text style={[styles.rowValue, { color: colors.mutedForeground }]}>{value}</Text>}
-        {rightEl}
-        {onPress && !rightEl && <Ionicons name="chevron-forward" size={15} color={colors.border} />}
-      </View>
-    </TouchableOpacity>
-  );
-}
-
-export default function ProfileScreen() {
-  const colors = useColors();
+export default function StudentProfile() {
   const insets = useSafeAreaInsets();
-  const { user, language, setLanguage, courses, tests } = useApp();
-  const { theme, toggleTheme } = useContext(ThemeContext);
-  const { width } = useWindowDimensions();
-  const [activeTab, setActiveTab] = useState<"overview" | "progress">("overview");
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const enrolled = courses.filter((c) => c.enrolled).length;
-  const completedTests = tests.filter((t) => t.attempted).length;
-  const isDark = theme === "dark";
+  const router = useRouter();
+  const { user, logout } = useAuth();
+
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(true);
+  const [darkEnabled, setDarkEnabled] = useState(false);
+  
+  const [upcomingClassesCount, setUpcomingClassesCount] = useState("0");
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState(user?.name || "");
+  const [saving, setSaving] = useState(false);
+  const [displayName, setDisplayName] = useState(user?.name || "Student");
+
+  const [batch, setBatch] = useState<string>("N/A");
+  const [performance, setPerformance] = useState("A+");
+  const [attendance, setAttendance] = useState("94%");
+
+  React.useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const storedPush = await AsyncStorage.getItem(`@pushEnabled_${user?.id}`);
+        if (storedPush !== null) setPushEnabled(storedPush === "true");
+
+        const storedDark = await AsyncStorage.getItem(`@darkEnabled_${user?.id}`);
+        if (storedDark !== null) setDarkEnabled(storedDark === "true");
+      } catch (e) {
+        console.error("Failed to load preferences", e);
+      }
+    };
+    if (user?.id) loadPreferences();
+  }, [user?.id]);
+
+  React.useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) return;
+      try {
+        const { turso } = await import('../../lib/turso');
+
+        // Fetch batch
+        const userRes = await turso.execute({
+          sql: "SELECT batch FROM users WHERE id = ?",
+          args: [user.id]
+        });
+        let userBatch = user.class || "Class 12 - Commerce";
+        if (userRes.rows.length > 0) {
+          userBatch = (userRes.rows[0][0] as string) || userBatch;
+        }
+        setBatch(userBatch);
+
+        // Fetch upcoming classes for today
+        const todayStr = new Date().toISOString().split("T")[0];
+        const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+        const todayDay = days[new Date().getDay()];
+
+        const ttRes = await turso.execute({
+          sql: "SELECT dayOfWeek, date, type FROM timetable WHERE batch = ?",
+          args: [userBatch]
+        });
+        
+        let todaysCount = 0;
+        ttRes.rows.forEach(r => {
+          const day = r[0] as string;
+          const date = r[1] as string;
+          const type = r[2] as string;
+          if (type === 'one-time' && date === todayStr) todaysCount++;
+          if ((type === 'recurring' || !type) && day === todayDay) todaysCount++;
+        });
+        
+        setUpcomingClassesCount(todaysCount.toString());
+
+        // Fetch Performance
+        const resRes = await turso.execute({
+          sql: "SELECT r.marksObtained, e.totalMarks FROM results r JOIN exams e ON r.examId = e.id WHERE r.studentId = ?",
+          args: [user.id]
+        });
+        if (resRes.rows.length > 0) {
+           let totalP = 0;
+           resRes.rows.forEach(r => {
+              const m = r[0] as number;
+              const t = r[1] as number;
+              totalP += t > 0 ? (m / t) * 100 : 0;
+           });
+           const avg = totalP / resRes.rows.length;
+           if (avg >= 90) setPerformance("A+");
+           else if (avg >= 80) setPerformance("A");
+           else if (avg >= 70) setPerformance("B");
+           else if (avg >= 60) setPerformance("C");
+           else setPerformance("D");
+        } else {
+           setPerformance("N/A");
+        }
+
+      } catch (e) {
+        console.error("Stats Error:", e);
+      }
+    };
+    fetchStats();
+  }, [user]);
+
+  const toggleSection = (section: string) => {
+    Haptics.selectionAsync();
+    setExpandedSection(expandedSection === section ? null : section);
+  };
+
+  const handleLogout = async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await logout();
+    router.replace("/login");
+  };
+
+  const saveProfile = async () => {
+    if (!editName.trim()) return;
+    setSaving(true);
+    try {
+      const { turso } = await import('../../lib/turso');
+      if (user?.id) {
+        await turso.execute({
+          sql: "UPDATE users SET name = ? WHERE id = ?",
+          args: [editName.trim(), user.id]
+        });
+      }
+      setDisplayName(editName.trim());
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowEditModal(false);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to update profile.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Platform.OS === "web" ? 110 : 110 }}>
-
-        {/* ── HERO ── */}
-        <View style={[styles.heroWrap, { paddingTop: topPad }]}>
-          {/* Purple gradient banner */}
-          <View style={[styles.heroBanner, { backgroundColor: "#5B9BD5" }]}>
-            {/* Decorative circles */}
-            <View style={[styles.decCircle1, { backgroundColor: "rgba(255,255,255,0.08)" }]} />
-            <View style={[styles.decCircle2, { backgroundColor: "rgba(255,255,255,0.06)" }]} />
-            <View style={[styles.decCircle3, { backgroundColor: "rgba(255,255,255,0.05)" }]} />
+    <View style={styles.container}>
+      
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        
+        {/* HEADER */}
+        <LinearGradient colors={["#0EA5E9", "#2563EB"]} style={[styles.header, { paddingTop: Math.max(insets.top, 40) + 30 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View style={styles.decoCircle1} />
+          <View style={styles.decoCircle2} />
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>My Profile</Text>
+            <View style={{ width: 40 }} />
           </View>
+        </LinearGradient>
 
-          {/* Profile card floating over banner */}
-          <View style={[styles.profileCard, { backgroundColor: colors.card, shadowColor: "#000" }]}>
-            {/* Avatar */}
-            <View style={[styles.avatarRing, { borderColor: "#5B9BD5" + "40" }]}>
-              <View style={[styles.avatarInner, { backgroundColor: "#5B9BD5" }]}>
-                <Text style={styles.avatarText}>{user.avatar}</Text>
+        {/* OVERLAPPING PROFILE CARD */}
+        <View style={styles.profileBox}>
+          <View style={styles.avatarWrap}>
+            {user?.avatar === 'boy' ? (
+              <Image source={{ uri: "https://avatar.iran.liara.run/public/boy" }} style={styles.avatarImage} contentFit="cover" transition={200} />
+            ) : user?.avatar === 'girl' ? (
+              <Image source={{ uri: "https://avatar.iran.liara.run/public/girl" }} style={styles.avatarImage} contentFit="cover" transition={200} />
+            ) : user?.avatar && user.avatar.length > 2 ? (
+              <Image source={{ uri: user.avatar }} style={styles.avatarImage} contentFit="cover" transition={200} />
+            ) : (
+              <View style={[styles.avatarImage, { backgroundColor: "#2563EB", justifyContent: "center", alignItems: "center" }]}>
+                <Text style={{ color: "#FFF", fontSize: 32, fontFamily: "Poppins_700Bold" }}>{user?.avatar || user?.name?.charAt(0) || "S"}</Text>
               </View>
+            )}
+            <TouchableOpacity style={styles.editBadge} onPress={() => { Haptics.selectionAsync(); setShowEditModal(true); }}>
+              <Ionicons name="pencil" size={14} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.userName}>{displayName}</Text>
+          <Text style={styles.userRole}>{(user?.role ?? "Student").toUpperCase()} • ID: {user?.id?.substring(0, 6).toUpperCase() ?? "STU-001"}</Text>
+          
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statVal}>{batch.split("-")[0]?.trim() || "N/A"}</Text>
+              <Text style={styles.statLabel}>Grade</Text>
             </View>
-
-            <Text style={[styles.heroName, { color: colors.foreground }]}>{user.name}</Text>
-            <Text style={[styles.heroClass, { color: "#5B9BD5" }]}>{user.class}</Text>
-            <Text style={[styles.heroSchool, { color: colors.mutedForeground }]}>{user.school}</Text>
-
-            {/* Rank + streak pill row */}
-            <View style={styles.pillRow}>
-              <View style={[styles.pill, { backgroundColor: "#F59E0B18", borderColor: "#F59E0B30" }]}>
-                <Ionicons name="flame" size={12} color="#F59E0B" />
-                <Text style={[styles.pillText, { color: "#F59E0B" }]}>{user.streak} day streak</Text>
-              </View>
-              <View style={[styles.pill, { backgroundColor: "#0EA5E918", borderColor: "#0EA5E930" }]}>
-                <Ionicons name="podium" size={12} color="#0EA5E9" />
-                <Text style={[styles.pillText, { color: "#0EA5E9" }]}>Rank #{user.rank}</Text>
-              </View>
-            </View>
-
-            {/* Stats row */}
-            <View style={[styles.statsStrip, { backgroundColor: colors.muted }]}>
-              {[
-                { val: enrolled, label: "Courses", color: "#5B9BD5", icon: "book" },
-                { val: completedTests, label: "Tests Done", color: "#48BB78", icon: "clipboard" },
-                { val: user.streak, label: "Day Streak", color: "#F59E0B", icon: "flame" },
-                { val: `${user.rank}`, label: "Class Rank", color: "#8B5CF6", icon: "trophy" },
-              ].map((s, i) => (
-                <React.Fragment key={s.label}>
-                  <View style={styles.statItem}>
-                    <Ionicons name={s.icon as any} size={14} color={s.color} />
-                    <Text style={[styles.statVal, { color: colors.foreground }]}>{s.val}</Text>
-                    <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-                  </View>
-                  {i < 3 && <View style={[styles.statDiv, { backgroundColor: colors.border }]} />}
-                </React.Fragment>
-              ))}
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={styles.statVal}>{performance}</Text>
+              <Text style={styles.statLabel}>Performance</Text>
             </View>
           </View>
         </View>
-
-        <View style={styles.body}>
-          {/* Tab Toggle */}
-          <View style={[styles.tabToggle, { backgroundColor: colors.muted }]}>
-            {(["overview", "progress"] as const).map((t) => (
-              <TouchableOpacity
-                key={t}
-                onPress={() => { setActiveTab(t); Haptics.selectionAsync(); }}
-                style={[styles.tabBtn, { backgroundColor: activeTab === t ? "#5B9BD5" : "transparent" }]}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.tabBtnText, { color: activeTab === t ? "#FFFFFF" : colors.mutedForeground }]}>
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {activeTab === "overview" ? (
-            <>
-              {/* ── ACHIEVEMENTS ── */}
-              <View style={styles.sectionHead}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Achievements</Text>
-                <View style={[styles.sectionBadge, { backgroundColor: "#5B9BD518" }]}>
-                  <Text style={[styles.sectionBadgeText, { color: "#5B9BD5" }]}>{ACHIEVEMENTS.length}</Text>
+        
+        {/* ACCOUNT DETAILS */}
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
+          <Text style={styles.sectionTitle}>Account Information</Text>
+          <View style={styles.cardBlock}>
+            
+            <TouchableOpacity style={styles.listItem} onPress={() => toggleSection("personal")} activeOpacity={0.7}>
+              <View style={[styles.icon, { backgroundColor: "#EFF6FF" }]}>
+                <Ionicons name="person" size={20} color="#3B82F6" />
+              </View>
+              <Text style={styles.listTitle}>Personal Details</Text>
+              <Ionicons name={expandedSection === "personal" ? "chevron-up" : "chevron-down"} size={20} color="#CBD5E1" />
+            </TouchableOpacity>
+            
+            {expandedSection === "personal" && (
+              <Animated.View entering={SlideInDown} exiting={SlideOutUp} layout={Layout.springify()} style={styles.expandedContent}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Email</Text>
+                  <Text style={styles.detailValue}>{user?.email ?? "Not Provided"}</Text>
                 </View>
-              </View>
-              <View style={styles.achieveGrid}>
-                {ACHIEVEMENTS.map((a) => (
-                  <View key={a.label} style={[styles.achieveCard, { backgroundColor: colors.card, borderColor: colors.border, width: (width - 52) / 2 }]}>
-                    <View style={[styles.achieveIcon, { backgroundColor: a.color + "18" }]}>
-                      <Ionicons name={a.icon} size={22} color={a.color} />
-                    </View>
-                    <Text style={[styles.achieveLabel, { color: colors.foreground }]}>{a.label}</Text>
-                    <Text style={[styles.achieveDesc, { color: colors.mutedForeground }]}>{a.desc}</Text>
-                  </View>
-                ))}
-              </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Phone</Text>
+                  <Text style={styles.detailValue}>+91 98765 43210</Text>
+                </View>
+                <TouchableOpacity style={styles.editContentBtn} onPress={() => { Haptics.selectionAsync(); setShowEditModal(true); }}>
+                  <Text style={styles.editContentText}>Edit Details</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
 
-              {/* ── SETTINGS ── */}
-              <View style={styles.sectionHead}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Settings</Text>
-              </View>
-              <View style={[styles.settingsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <SettingRow
-                  icon="language"
-                  label="Language"
-                  value={language === "en" ? "English" : "हिंदी"}
-                  onPress={() => setLanguage(language === "en" ? "hi" : "en")}
-                  accent="#0EA5E9"
-                />
-                <SettingRow
-                  icon={isDark ? "moon" : "sunny"}
-                  label="Dark Mode"
-                  accent="#6366F1"
-                  rightEl={
-                    <TouchableOpacity
-                      onPress={toggleTheme}
-                      style={[styles.themeToggle, { backgroundColor: isDark ? "#5B9BD5" : colors.muted }]}
-                      activeOpacity={0.8}
-                    >
-                      <View style={[styles.themeThumb, { transform: [{ translateX: isDark ? 20 : 2 }] }]} />
-                    </TouchableOpacity>
-                  }
-                />
-                <SettingRow icon="notifications" label="Notifications" onPress={() => {}} accent="#F59E0B" />
-                <SettingRow icon="download" label="Downloads" onPress={() => {}} accent="#10B981" />
-                <SettingRow icon="shield-checkmark" label="Privacy" onPress={() => {}} accent="#64748B" />
-                <SettingRow icon="information-circle" label="About VidyaPath" value="v1.0.0" accent="#0EA5E9" last />
-              </View>
-            </>
-          ) : (
-            <>
-              {/* ── SUBJECT PROGRESS ── */}
-              <View style={styles.sectionHead}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Subject Progress</Text>
-              </View>
-              <View style={[styles.progressCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                {SUBJECT_PROGRESS.map((s, i) => (
-                  <View key={s.subject} style={[styles.progressRow, { borderBottomColor: i === SUBJECT_PROGRESS.length - 1 ? "transparent" : colors.border }]}>
-                    <View style={[styles.progressIcon, { backgroundColor: s.color + "18" }]}>
-                      <Ionicons name={s.icon as any} size={16} color={s.color} />
-                    </View>
-                    <View style={styles.progressInfo}>
-                      <View style={styles.progressLabelRow}>
-                        <Text style={[styles.progressSubject, { color: colors.foreground }]}>{s.subject}</Text>
-                        <Text style={[styles.progressPct, { color: s.color }]}>{s.progress}%</Text>
-                      </View>
-                      <View style={[styles.progressTrack, { backgroundColor: colors.muted }]}>
-                        <View style={[styles.progressFill, { width: `${s.progress}%` as any, backgroundColor: s.color }]} />
-                      </View>
-                    </View>
-                  </View>
-                ))}
-              </View>
+            <View style={styles.divider} />
 
-              {/* ── STUDY STATS ── */}
-              <View style={styles.sectionHead}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>This Week</Text>
+            <TouchableOpacity style={styles.listItem} onPress={() => toggleSection("academic")} activeOpacity={0.7}>
+              <View style={[styles.icon, { backgroundColor: "#F3E8FF" }]}>
+                <Ionicons name="school" size={20} color="#8B5CF6" />
               </View>
-              <View style={styles.weekGrid}>
-                {[
-                  { val: "12h", label: "Study Time", color: "#5B9BD5", icon: "time", bg: "#EFF6FF" },
-                  { val: "8", label: "Lectures", color: "#48BB78", icon: "play-circle", bg: "#F0FFF4" },
-                  { val: "3", label: "Tests", color: "#F59E0B", icon: "clipboard", bg: "#FEF3C7" },
-                  { val: "95%", label: "Attendance", color: "#9B7BC4", icon: "calendar", bg: "#EDE9FE" },
-                ].map((s) => (
-                  <View key={s.label} style={[styles.weekCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <View style={[styles.weekIcon, { backgroundColor: s.color + "18" }]}>
-                      <Ionicons name={s.icon as any} size={20} color={s.color} />
-                    </View>
-                    <Text style={[styles.weekVal, { color: colors.foreground }]}>{s.val}</Text>
-                    <Text style={[styles.weekLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-                  </View>
-                ))}
-              </View>
-            </>
-          )}
+              <Text style={styles.listTitle}>Academic Details</Text>
+              <Ionicons name={expandedSection === "academic" ? "chevron-up" : "chevron-down"} size={20} color="#CBD5E1" />
+            </TouchableOpacity>
 
-          {/* ── CBSE BADGE ── */}
-          <View style={[styles.cbseBadge, { backgroundColor: "#5B9BD510", borderColor: "#5B9BD525" }]}>
-            <View style={[styles.cbseIcon, { backgroundColor: "#5B9BD518" }]}>
-              <Ionicons name="school" size={20} color="#5B9BD5" />
+            {expandedSection === "academic" && (
+              <Animated.View entering={SlideInDown} exiting={SlideOutUp} layout={Layout.springify()} style={styles.expandedContent}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Batch</Text>
+                  <Text style={styles.detailValue}>{batch}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Attendance</Text>
+                  <Text style={styles.detailValue}>{attendance}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Upcoming Classes</Text>
+                  <Text style={styles.detailValue}>{upcomingClassesCount}</Text>
+                </View>
+              </Animated.View>
+            )}
+          </View>
+        </Animated.View>
+
+        {/* PREFERENCES */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferences</Text>
+          <View style={styles.cardBlock}>
+            
+            <View style={styles.listItem}>
+              <View style={[styles.icon, { backgroundColor: "#FFFBEB" }]}>
+                <Ionicons name="notifications" size={20} color="#F59E0B" />
+              </View>
+              <Text style={styles.listTitle}>Push Notifications</Text>
+              <Switch 
+                value={pushEnabled} 
+                onValueChange={async (val) => { 
+                  Haptics.selectionAsync(); 
+                  setPushEnabled(val);
+                  await AsyncStorage.setItem(`@pushEnabled_${user?.id}`, val ? "true" : "false");
+                }} 
+                trackColor={{ false: "#E2E8F0", true: "#34D399" }}
+                thumbColor={"#FFFFFF"}
+              />
             </View>
-            <View style={styles.cbseInfo}>
-              <Text style={[styles.cbseTitle, { color: colors.foreground }]}>CBSE Board 2025–26</Text>
-              <Text style={[styles.cbseSub, { color: colors.mutedForeground }]}>Class 11–12 Commerce • Aligned Curriculum</Text>
+
+            <View style={styles.divider} />
+
+            <View style={styles.listItem}>
+              <View style={[styles.icon, { backgroundColor: "#F1F5F9" }]}>
+                <Ionicons name="moon" size={20} color="#64748B" />
+              </View>
+              <Text style={styles.listTitle}>Dark Mode</Text>
+              <Switch 
+                value={darkEnabled} 
+                onValueChange={async (val) => { 
+                  Haptics.selectionAsync(); 
+                  setDarkEnabled(val);
+                  await AsyncStorage.setItem(`@darkEnabled_${user?.id}`, val ? "true" : "false");
+                  if (val) {
+                    alert("Dark mode is coming in the next update!");
+                    setTimeout(() => setDarkEnabled(false), 500);
+                  }
+                }} 
+                trackColor={{ false: "#E2E8F0", true: "#3B82F6" }}
+                thumbColor={"#FFFFFF"}
+              />
+            </View>
+
+          </View>
+        </Animated.View>
+
+        {/* LOGOUT */}
+        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <Ionicons name="log-out" size={20} color="#EF4444" />
+            <Text style={styles.logoutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+      </ScrollView>
+
+      {/* EDIT MODAL */}
+      <Modal visible={showEditModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 }}>
+          <View style={{ backgroundColor: "#FFF", borderRadius: 24, padding: 24 }}>
+            <Text style={{ fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0F172A", marginBottom: 16 }}>Edit Profile</Text>
+            
+            <Text style={{ fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B", marginBottom: 8 }}>Full Name</Text>
+            <TextInput
+              style={{ backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, fontFamily: "Poppins_500Medium", color: "#0F172A", marginBottom: 24 }}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Enter your name"
+            />
+            
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#F1F5F9", alignItems: "center" }} onPress={() => setShowEditModal(false)}>
+                <Text style={{ fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#64748B" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#0EA5E9", alignItems: "center", opacity: saving ? 0.7 : 1 }} onPress={saveProfile} disabled={saving}>
+                <Text style={{ fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#FFF" }}>{saving ? "Saving..." : "Save Changes"}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
-      </ScrollView>
+      </Modal>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  heroWrap: { position: "relative", marginBottom: 0 },
-  heroBanner: { height: 160 },
-  decCircle1: { position: "absolute", width: 200, height: 200, borderRadius: 100, top: -60, right: -40 },
-  decCircle2: { position: "absolute", width: 140, height: 140, borderRadius: 70, top: 20, left: -30 },
-  decCircle3: { position: "absolute", width: 80, height: 80, borderRadius: 40, bottom: -10, right: 80 },
-  profileCard: {
-    marginHorizontal: 16, marginTop: -60, borderRadius: 24,
-    padding: 20, alignItems: "center", gap: 6,
-    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 6,
-  },
-  avatarRing: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, justifyContent: "center", alignItems: "center", marginBottom: 4 },
-  avatarInner: { width: 78, height: 78, borderRadius: 39, justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#FFFFFF", fontSize: 26, fontFamily: "Poppins_700Bold" },
-  heroName: { fontSize: 20, fontFamily: "Poppins_700Bold" },
-  heroClass: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
-  heroSchool: { fontSize: 11, fontFamily: "Poppins_400Regular" },
-  pillRow: { flexDirection: "row", gap: 8, marginTop: 4 },
-  pill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
-  pillText: { fontSize: 11, fontFamily: "Poppins_600SemiBold" },
-  statsStrip: { flexDirection: "row", borderRadius: 16, paddingVertical: 12, paddingHorizontal: 4, alignItems: "center", width: "100%", marginTop: 8 },
-  statItem: { flex: 1, alignItems: "center", gap: 3 },
-  statVal: { fontSize: 15, fontFamily: "Poppins_700Bold" },
-  statLabel: { fontSize: 9, fontFamily: "Poppins_400Regular" },
-  statDiv: { width: 1, height: 28 },
-  body: { padding: 16, gap: 14 },
-  tabToggle: { flexDirection: "row", borderRadius: 14, padding: 3 },
-  tabBtn: { flex: 1, paddingVertical: 9, alignItems: "center", borderRadius: 12 },
-  tabBtnText: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
-  sectionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4, marginBottom: 2 },
-  sectionTitle: { flex: 1, fontSize: 16, fontFamily: "Poppins_700Bold" },
-  sectionBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  sectionBadgeText: { fontSize: 11, fontFamily: "Poppins_700Bold" },
-  achieveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  achieveCard: { borderRadius: 16, borderWidth: 1, padding: 14, alignItems: "center", gap: 6 },
-  achieveIcon: { width: 44, height: 44, borderRadius: 13, justifyContent: "center", alignItems: "center" },
-  achieveLabel: { fontSize: 12, fontFamily: "Poppins_700Bold", textAlign: "center" },
-  achieveDesc: { fontSize: 10, fontFamily: "Poppins_400Regular", textAlign: "center" },
-  settingsCard: { borderRadius: 18, borderWidth: 1, overflow: "hidden" },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
-  rowIcon: { width: 34, height: 34, borderRadius: 10, justifyContent: "center", alignItems: "center" },
-  rowLabel: { flex: 1, fontSize: 13, fontFamily: "Poppins_500Medium" },
-  rowRight: { flexDirection: "row", alignItems: "center", gap: 6 },
-  rowValue: { fontSize: 12, fontFamily: "Poppins_400Regular" },
-  themeToggle: { width: 44, height: 26, borderRadius: 13, justifyContent: "center", paddingHorizontal: 2 },
-  themeThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#FFFFFF" },
-  progressCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  progressRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderBottomWidth: 1 },
-  progressIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: "center", alignItems: "center", flexShrink: 0 },
-  progressInfo: { flex: 1, gap: 6 },
-  progressLabelRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  progressSubject: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
-  progressPct: { fontSize: 13, fontFamily: "Poppins_700Bold" },
-  progressTrack: { height: 7, borderRadius: 4, overflow: "hidden" },
-  progressFill: { height: 7, borderRadius: 4 },
-  weekGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  weekCard: { width: "47%", borderRadius: 16, borderWidth: 1, padding: 16, alignItems: "center", gap: 6 },
-  weekIcon: { width: 44, height: 44, borderRadius: 13, justifyContent: "center", alignItems: "center" },
-  weekVal: { fontSize: 20, fontFamily: "Poppins_700Bold" },
-  weekLabel: { fontSize: 11, fontFamily: "Poppins_400Regular" },
-  cbseBadge: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 16, borderWidth: 1, padding: 14 },
-  cbseIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: "center", alignItems: "center" },
-  cbseInfo: { flex: 1 },
-  cbseTitle: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
-  cbseSub: { fontSize: 11, fontFamily: "Poppins_400Regular" },
+  container: { flex: 1, backgroundColor: "#F4F6F8" }, 
+  
+  header: { paddingHorizontal: 20, paddingBottom: 12, position: "relative", overflow: "hidden" },
+  decoCircle1: { position: "absolute", top: -50, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.15)" },
+  decoCircle2: { position: "absolute", bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.1)" },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 2 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  headerTitle: { fontSize: 20, fontFamily: "Poppins_700Bold", color: "#FFFFFF" },
+  
+  profileBox: { alignItems: "center", zIndex: 10, marginTop: -30, backgroundColor: "#FFF", marginHorizontal: 20, borderRadius: 24, paddingVertical: 24, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4 },
+  avatarWrap: { width: 100, height: 100, borderRadius: 50, backgroundColor: "#FFF", padding: 4, justifyContent: "center", alignItems: "center", marginBottom: 16, position: "relative", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
+  avatarImage: { width: 92, height: 92, borderRadius: 46 },
+  editBadge: { position: "absolute", bottom: 2, right: 2, backgroundColor: "#0EA5E9", width: 32, height: 32, borderRadius: 16, justifyContent: "center", alignItems: "center", borderWidth: 3, borderColor: "#FFF", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3 },
+  userName: { fontSize: 22, fontFamily: "Poppins_700Bold", color: "#0F172A", marginBottom: 2 },
+  userRole: { fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B", marginBottom: 16 },
+  statsRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", width: "100%", paddingHorizontal: 20 },
+  statBox: { flex: 1, alignItems: "center" },
+  statVal: { fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0EA5E9" },
+  statLabel: { fontSize: 11, fontFamily: "Poppins_500Medium", color: "#94A3B8" },
+  statDivider: { width: 1, height: 30, backgroundColor: "#E2E8F0" },
+
+  scroll: { paddingBottom: 100 },
+  
+  section: { paddingHorizontal: 20, marginBottom: 24 },
+  sectionTitle: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#64748B", marginBottom: 12, marginLeft: 4, textTransform: "uppercase", letterSpacing: 0.5 },
+  cardBlock: { backgroundColor: "#FFFFFF", borderRadius: 24, paddingHorizontal: 18, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 18, gap: 14 },
+  icon: { width: 42, height: 42, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  listTitle: { flex: 1, fontSize: 15, fontFamily: "Poppins_600SemiBold", color: "#334155" },
+  divider: { height: 1, backgroundColor: "#F1F5F9" },
+
+  expandedContent: { backgroundColor: "#F8FAFC", borderRadius: 16, padding: 16, marginBottom: 18, gap: 12 },
+  detailRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  detailLabel: { fontSize: 13, fontFamily: "Poppins_500Medium", color: "#64748B" },
+  detailValue: { fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" },
+  editContentBtn: { marginTop: 8, alignSelf: "flex-end" },
+  editContentText: { fontSize: 12, fontFamily: "Poppins_600SemiBold", color: "#0EA5E9" },
+
+  logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#FEF2F2", paddingVertical: 18, borderRadius: 20, gap: 8, borderWidth: 1, borderColor: "#FEE2E2" },
+  logoutText: { fontSize: 16, fontFamily: "Poppins_600SemiBold", color: "#EF4444" },
 });
+
+
+
+

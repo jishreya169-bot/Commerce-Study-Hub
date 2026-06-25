@@ -1,11 +1,12 @@
 {
+  "$schema": "https://json.schemastore.org/app-config.json",
   "expo": {
-    "name": "VidyaPath LMS",
-    "slug": "mobile",
-    "version": "1.0.0",
+    "name": "Webvibezzz-Acadamy",
+    "slug": "webvibezzz",
+    "version": "1.0.10",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "webvibezzzacadamy",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -14,9 +15,20 @@
       "backgroundColor": "#0F0B1A"
     },
     "ios": {
-      "supportsTablet": false
+      "bundleIdentifier": "com.webvibezzz.academy",
+      "buildNumber": "10",
+      "supportsTablet": false,
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
-    "android": {},
+    "android": {
+      "package": "com.webvibezzz.academy",
+      "versionCode": 10,
+      "googleServicesFile": "./google-services.json",
+      "notification": {
+        "icon": "./assets/images/icon.png",
+        "color": "#0EA5E9"
+      }
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -33,6 +45,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "73dcf90a-a70a-43e0-aaba-32382c830ec8"
+      }
+    },
+    "owner": "webvibezzzs-organization"
   }
 }

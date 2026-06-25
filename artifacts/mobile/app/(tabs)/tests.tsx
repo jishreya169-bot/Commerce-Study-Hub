@@ -1,215 +1,200 @@
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Platform,
-  useWindowDimensions,
-} from "react-native";
+import React, { useState } from "react";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useColors } from "@/hooks/useColors";
-import { useApp } from "@/context/AppContext";
-import { TestCard } from "@/components/TestCard";
-import { SubjectChip } from "@/components/SubjectChip";
-import { Skeleton } from "@/components/Skeleton";
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
-const SUBJECTS = ["All", "Accountancy", "Business Studies", "Economics", "Mathematics"];
+import { turso } from "../../lib/turso";
+import { useAuth } from "@/context/AuthContext";
 
-function TestSkeleton() {
-  const colors = useColors();
-  return (
-    <View style={[{ backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, padding: 14, marginBottom: 12, flexDirection: "row", gap: 12, alignItems: "center" }]}>
-      <Skeleton width={50} height={50} borderRadius={14} />
-      <View style={{ flex: 1, gap: 6 }}>
-        <Skeleton width="30%" height={10} />
-        <Skeleton width="80%" height={14} />
-        <Skeleton width="50%" height={10} />
-      </View>
-      <Skeleton width={34} height={34} borderRadius={17} />
-    </View>
-  );
-}
-
-export default function TestsScreen() {
-  const colors = useColors();
+export default function StudentTests() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { tests } = useApp();
-  const { width } = useWindowDimensions();
-  const [selectedSubject, setSelectedSubject] = useState("All");
-  const [tab, setTab] = useState<"all" | "attempted">("all");
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  
+  const [upcomingTests, setUpcomingTests] = useState<any[]>([]);
+  const [pastTests, setPastTests] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  React.useEffect(() => {
+    const fetchTests = async () => {
+      if (!user) return;
+      try {
+        const userRes = await turso.execute({
+          sql: "SELECT batch FROM users WHERE id = ?",
+          args: [user.id]
+        });
+        let batch = user.class || "Class 12 - Commerce";
+        if (userRes.rows.length > 0) {
+          batch = (userRes.rows[0][0] as string) || batch;
+        }
 
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 850);
-    return () => clearTimeout(t);
-  }, []);
+        const examsRes = await turso.execute({
+          sql: "SELECT id, title, date, totalMarks FROM exams WHERE classId = ? ORDER BY date DESC",
+          args: [batch]
+        });
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+        const resultsRes = await turso.execute({
+          sql: "SELECT examId, marksObtained FROM results WHERE studentId = ?",
+          args: [user.id]
+        });
 
-  const filtered = tests.filter((t) => {
-    const matchSub = selectedSubject === "All" || t.subject === selectedSubject;
-    const matchTab = tab === "all" ? true : t.attempted;
-    return matchSub && matchTab;
-  });
+        const resultsMap: Record<string, number> = {};
+        resultsRes.rows.forEach(r => {
+          resultsMap[r[0] as string] = r[1] as number;
+        });
 
-  const attempted = tests.filter((t) => t.attempted);
-  const avgScore =
-    attempted.length > 0
-      ? Math.round(
-          attempted.reduce((a, t) => a + ((t.score ?? 0) / t.maxScore) * 100, 0) /
-            attempted.length
-        )
-      : 0;
+        const upcoming: any[] = [];
+        const past: any[] = [];
+
+        examsRes.rows.forEach((r, i) => {
+          const id = r[0] as string;
+          const title = r[1] as string;
+          const date = r[2] as string;
+          const totalMarks = r[3] as number;
+          const color = ["#3B82F6", "#F59E0B", "#10B981", "#EF4444"][i % 4];
+
+          if (resultsMap[id] !== undefined) {
+             past.push({ id, title, date, score: resultsMap[id], totalMarks, color });
+          } else {
+             upcoming.push({ id, title, date, duration: "60 mins", totalMarks, color });
+          }
+        });
+
+        setUpcomingTests(upcoming);
+        setPastTests(past);
+      } catch(e) {
+        console.error(e);
+      }
+    };
+    fetchTests();
+  }, [user]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View
-        style={[
-          styles.header,
-          { paddingTop: topPad + 10, backgroundColor: colors.card, borderBottomColor: colors.border },
-        ]}
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>Tests & Quizzes</Text>
-        {!loading && attempted.length > 0 && (
-          <View style={[styles.avgPill, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}>
-            <Ionicons name="bar-chart" size={14} color={colors.primary} />
-            <Text style={[styles.avgText, { color: colors.primary }]}>Avg {avgScore}%</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Summary row */}
-      {!loading && (
-        <View style={[styles.summaryRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryVal, { color: colors.foreground }]}>{tests.length}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Total</Text>
-          </View>
-          <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryVal, { color: colors.success }]}>{attempted.length}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Done</Text>
-          </View>
-          <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryVal, { color: colors.warning }]}>{tests.length - attempted.length}</Text>
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Pending</Text>
-          </View>
+    <View style={styles.container}>
+      
+      {/* HEADER */}
+      <LinearGradient colors={["#0EA5E9", "#2563EB"]} style={[styles.header, { paddingTop: Math.max(insets.top, 40) + 30 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <View style={styles.decoCircle1} />
+        <View style={styles.decoCircle2} />
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Tests & Quizzes</Text>
+          <View style={{ width: 40 }} />
         </View>
-      )}
+      </LinearGradient>
 
-      {/* Tabs + Chips */}
-      <View style={[styles.filterBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <View style={[styles.toggle, { backgroundColor: colors.secondary }]}>
-          {(["all", "attempted"] as const).map((t) => (
-            <Text
-              key={t}
-              onPress={() => setTab(t)}
-              style={[
-                styles.toggleOpt,
-                {
-                  backgroundColor: tab === t ? colors.primary : "transparent",
-                  color: tab === t ? "#FFFFFF" : colors.mutedForeground,
-                },
-              ]}
-            >
-              {t === "all" ? "All Tests" : "Attempted"}
-            </Text>
-          ))}
-        </View>
-      </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={[styles.chipRow, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 10 }}
-      >
-        {SUBJECTS.map((s) => (
-          <SubjectChip
-            key={s}
-            label={s}
-            selected={selectedSubject === s}
-            onPress={() => setSelectedSubject(s)}
+      {/* FLOATING SEARCH */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={20} color="#64748B" />
+          <TextInput 
+            style={styles.searchInput} 
+            placeholder="Search upcoming or past tests..." 
+            placeholderTextColor="#94A3B8" 
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
-        ))}
-      </ScrollView>
+        </View>
+      </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.list, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}
-      >
-        {loading ? (
-          [1, 2, 3].map((i) => <TestSkeleton key={i} />)
-        ) : filtered.length === 0 ? (
-          <View style={[styles.empty, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Ionicons name="clipboard-outline" size={44} color={colors.border} />
-            <Text style={[styles.emptyTitle, { color: colors.mutedForeground }]}>No tests found</Text>
-            <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>Try a different filter</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+
+        {/* UPCOMING TESTS */}
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Upcoming Tests</Text>
           </View>
-        ) : (
-          filtered.map((t) => (
-            <TestCard key={t.id} test={t} onPress={() => router.push(`/test/${t.id}`)} />
-          ))
-        )}
+          <View style={styles.cardBlock}>
+            {upcomingTests.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_500Medium", color: "#94A3B8" }}>No upcoming tests found.</Text>
+              </View>
+            )}
+            {upcomingTests.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase())).map((t, i, arr) => (
+              <TouchableOpacity key={t.id} style={[styles.listItem, i === arr.length - 1 && { borderBottomWidth: 0 }]} onPress={() => Haptics.selectionAsync()}>
+                <View style={[styles.listIcon, { backgroundColor: t.color + "15" }]}>
+                  <Ionicons name="time" size={22} color={t.color} />
+                </View>
+                <View style={styles.listTextWrap}>
+                  <Text style={styles.listTitle}>{t.title}</Text>
+                  <Text style={styles.listDesc}>{t.date} • {t.duration} • {t.totalMarks} Marks</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+
+        {/* PAST RESULTS */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Past Results</Text>
+          </View>
+          <View style={styles.cardBlock}>
+            {pastTests.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_500Medium", color: "#94A3B8" }}>No past tests found.</Text>
+              </View>
+            )}
+            {pastTests.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase())).map((t, i, arr) => (
+              <TouchableOpacity key={t.id} style={[styles.listItem, i === arr.length - 1 && { borderBottomWidth: 0 }]} onPress={() => Haptics.selectionAsync()}>
+                <View style={[styles.listIcon, { backgroundColor: "#F1F5F9" }]}>
+                  <Ionicons name="checkmark-done-circle" size={24} color="#64748B" />
+                </View>
+                <View style={styles.listTextWrap}>
+                  <Text style={styles.listTitle}>{t.title}</Text>
+                  <Text style={styles.listDesc}>{t.date}</Text>
+                </View>
+                <View style={styles.listRight}>
+                  <Text style={styles.scoreLabel}>Score</Text>
+                  <Text style={[styles.scoreValue, { color: t.color }]}>{t.score}/{t.totalMarks}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Animated.View>
+
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-  },
-  title: { fontSize: 22, fontFamily: "Poppins_700Bold" },
-  avgPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  avgText: { fontSize: 13, fontFamily: "Poppins_700Bold" },
-  summaryRow: {
-    flexDirection: "row",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    alignItems: "center",
-  },
-  summaryItem: { flex: 1, alignItems: "center" },
-  summaryVal: { fontSize: 20, fontFamily: "Poppins_700Bold" },
-  summaryLabel: { fontSize: 11, fontFamily: "Poppins_400Regular" },
-  summaryDivider: { width: 1, height: 30 },
-  filterBar: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  toggle: { flexDirection: "row", borderRadius: 12, padding: 3, alignSelf: "flex-start" },
-  toggleOpt: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 10,
-    fontSize: 12,
-    fontFamily: "Poppins_600SemiBold",
-    overflow: "hidden",
-  },
-  chipRow: { maxHeight: 56, borderBottomWidth: 1 },
-  list: { paddingHorizontal: 20, paddingTop: 12 },
-  empty: { borderRadius: 16, borderWidth: 1, padding: 36, alignItems: "center", gap: 10, marginTop: 20 },
-  emptyTitle: { fontSize: 16, fontFamily: "Poppins_600SemiBold" },
-  emptyHint: { fontSize: 13, fontFamily: "Poppins_400Regular" },
+  container: { flex: 1, backgroundColor: "#F4F6F8" }, 
+  header: { paddingHorizontal: 20, paddingBottom: 16, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, position: "relative", overflow: "hidden" },
+  decoCircle1: { position: "absolute", top: -50, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.15)" },
+  decoCircle2: { position: "absolute", bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.1)" },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 2 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  headerTitle: { fontSize: 20, fontFamily: "Poppins_700Bold", color: "#FFFFFF" },
+  
+  searchContainer: { marginTop: -12, paddingHorizontal: 20, zIndex: 10 },
+  searchBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, gap: 10, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 5 },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Poppins_400Regular", color: "#0F172A", padding: 0 },
+
+  scroll: { paddingBottom: 100, paddingTop: 40 },
+  section: { paddingHorizontal: 20, marginBottom: 30 },
+  sectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0F172A", letterSpacing: -0.5 },
+
+  cardBlock: { backgroundColor: "#FFFFFF", borderRadius: 24, paddingHorizontal: 18, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 },
+  
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 14 },
+  listIcon: { width: 46, height: 46, borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  listTextWrap: { flex: 1 },
+  listTitle: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#0F172A", marginBottom: 4 },
+  listDesc: { fontSize: 11, fontFamily: "Poppins_500Medium", color: "#64748B" },
+  
+  listRight: { alignItems: "flex-end" },
+  scoreLabel: { fontSize: 10, fontFamily: "Poppins_500Medium", color: "#94A3B8", marginBottom: 2 },
+  scoreValue: { fontSize: 16, fontFamily: "Poppins_700Bold" },
 });
+
+
+
+

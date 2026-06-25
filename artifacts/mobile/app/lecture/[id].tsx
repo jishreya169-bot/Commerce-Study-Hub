@@ -24,11 +24,7 @@ export default function LectureRouter() {
       router.back();
       return;
     }
-    if (chapter.isLive && !chapter.hasRecording) {
-      router.replace(`/live-session/${courseId}`);
-    } else {
-      router.replace(`/recorded/${id}?courseId=${courseId}&chapterId=${id}`);
-    }
+    router.replace(`/recorded/${id}?courseId=${courseId}&chapterId=${id}`);
   }, []);
 
   return (

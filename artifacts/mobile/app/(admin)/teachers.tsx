@@ -1,414 +1,307 @@
 import React, { useState } from "react";
-import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Platform, Modal,
-} from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useColors } from "@/hooks/useColors";
+import { useRouter, useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { turso } from "../../lib/turso";
+import ChangePasswordModal from "../../components/ChangePasswordModal";
+import DropdownSelector, { DropdownOption } from "../../components/DropdownSelector";
 
-const ALL_CLASSES = ["XII-A", "XII-B", "XII-C", "XI-A", "XI-B", "XI-C"];
-
-const INIT_TEACHERS = [
-  { id: "t1", name: "Prof. Amit Sharma", email: "teacher@vidyapath.in", avatar: "AS", subject: "Accountancy & Economics", qualification: "M.Com, B.Ed", experience: "8 Years", students: 45, courses: 3, rating: 4.9, status: "active", color: "#48BB78", joined: "Aug 2022", assignedClasses: ["XII-A", "XII-B"] },
-  { id: "t2", name: "Ms. Sunita Rao", email: "teacher2@vidyapath.in", avatar: "SR", subject: "Business Studies & English", qualification: "MBA, B.Ed", experience: "5 Years", students: 52, courses: 2, rating: 4.7, status: "active", color: "#5B9BD5", joined: "Jan 2023", assignedClasses: ["XII-B", "XII-C"] },
-  { id: "t3", name: "Mr. Deepak Verma", email: "deepak@vidyapath.in", avatar: "DV", subject: "Mathematics", qualification: "M.Sc Maths, B.Ed", experience: "10 Years", students: 30, courses: 2, rating: 4.8, status: "active", color: "#9B7BC4", joined: "Jun 2021", assignedClasses: ["XII-A"] },
-  { id: "t4", name: "Mrs. Kavita Joshi", email: "kavita@vidyapath.in", avatar: "KJ", subject: "Accountancy (Class 11)", qualification: "M.Com", experience: "3 Years", students: 35, courses: 1, rating: 4.5, status: "inactive", color: "#7B8EBF", joined: "Mar 2024", assignedClasses: ["XI-A", "XI-B"] },
-];
+interface Teacher {
+  id: string;
+  name: string;
+  email: string;
+  batch: string; // Used as subjects for teacher
+}
 
 export default function AdminTeachers() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
-  const [search, setSearch] = useState("");
-  const [selectedTeacher, setSelectedTeacher] = useState<typeof INIT_TEACHERS[0] | null>(null);
-  const [teachers, setTeachers] = useState(INIT_TEACHERS);
-  const [showAdd, setShowAdd] = useState(false);
-  const [showAssignClass, setShowAssignClass] = useState(false);
-  const [assignTarget, setAssignTarget] = useState<typeof INIT_TEACHERS[0] | null>(null);
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const router = useRouter();
+
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
+  
+  // Form State
+  const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [newSubject, setNewSubject] = useState("");
-  const [newQual, setNewQual] = useState("");
-  const [newExp, setNewExp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newSubjects, setNewSubjects] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [classesList, setClassesList] = useState<DropdownOption[]>([]);
 
-  const filtered = teachers.filter((t) =>
-    search === "" || t.name.toLowerCase().includes(search.toLowerCase()) || t.subject.toLowerCase().includes(search.toLowerCase())
+  // Password Modal State
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<{id: string, name: string} | null>(null);
+
+  const handleUpdatePassword = async (newPassword: string) => {
+    if (!selectedUser) return;
+    await turso.execute({
+      sql: "UPDATE users SET password = ? WHERE id = ?",
+      args: [newPassword, selectedUser.id]
+    });
+  };
+
+  const fetchTeachers = async () => {
+    try {
+      setLoadingList(true);
+      const result = await turso.execute("SELECT id, name, email, batch FROM users WHERE role = 'teacher' ORDER BY createdAt DESC");
+      const data = result.rows.map(r => ({
+        id: r[0] as string,
+        name: r[1] as string,
+        email: r[2] as string,
+        batch: r[3] as string
+      }));
+      setTeachers(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingList(false);
+    }
+  };
+
+  const fetchClasses = async () => {
+    try {
+      const result = await turso.execute("SELECT name FROM classes");
+      setClassesList(result.rows.map(r => ({ id: r[0] as string, label: r[0] as string })));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchTeachers();
+      fetchClasses();
+    }, [])
   );
 
-  const toggleStatus = (id: string) => {
-    setTeachers((prev) => prev.map((t) => t.id === id ? { ...t, status: t.status === "active" ? "inactive" : "active" } : t));
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const toggleClass = (teacherId: string, cls: string) => {
-    setTeachers((prev) => prev.map((t) => {
-      if (t.id !== teacherId) return t;
-      const has = t.assignedClasses.includes(cls);
-      return { ...t, assignedClasses: has ? t.assignedClasses.filter((c) => c !== cls) : [...t.assignedClasses, cls] };
-    }));
-    if (assignTarget?.id === teacherId) {
-      setAssignTarget((prev) => {
-        if (!prev) return prev;
-        const has = prev.assignedClasses.includes(cls);
-        return { ...prev, assignedClasses: has ? prev.assignedClasses.filter((c) => c !== cls) : [...prev.assignedClasses, cls] };
-      });
+  const handleAddTeacher = async () => {
+    if (!newName || !newEmail || !newPassword) {
+      alert("Please fill name, email and password.");
+      return;
     }
-    Haptics.selectionAsync();
+    try {
+      setSubmitting(true);
+      
+      // Auto-generate Sequential Teacher ID
+      const latestTeacherRes = await turso.execute("SELECT id FROM users WHERE id LIKE 'TCH-%' ORDER BY id DESC LIMIT 1");
+      let newIdNum = 1001;
+      if (latestTeacherRes.rows.length > 0) {
+        const lastId = latestTeacherRes.rows[0][0] as string;
+        const numPart = parseInt(lastId.split("-")[1], 10);
+        if (!isNaN(numPart)) newIdNum = numPart + 1;
+      }
+      const id = `TCH-${newIdNum}`;
+      const createdAt = new Date().toISOString();
+
+      await turso.execute({
+        sql: "INSERT INTO users (id, name, email, password, role, batch, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        args: [id, newName, newEmail, newPassword, "teacher", newSubjects, createdAt]
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      alert("Teacher added successfully!");
+      
+      setShowAddForm(false);
+      setNewName("");
+      setNewEmail("");
+      setNewPassword("");
+      setNewSubjects("");
+      fetchTeachers();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to add teacher. Ensure email is unique.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const addTeacher = () => {
-    if (!newName.trim() || !newEmail.trim()) return;
-    const t = {
-      id: `t${Date.now()}`, name: newName.trim(), email: newEmail.trim(),
-      avatar: newName.trim().split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2),
-      subject: newSubject.trim() || "General", qualification: newQual.trim() || "—",
-      experience: newExp.trim() || "—", students: 0, courses: 0, rating: 0,
-      status: "active", color: "#48BB78", joined: "May 2025", assignedClasses: [],
-    };
-    setTeachers((prev) => [...prev, t]);
-    setNewName(""); setNewEmail(""); setNewSubject(""); setNewQual(""); setNewExp("");
-    setShowAdd(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const activeCount = teachers.filter((t) => t.status === "active").length;
-  const totalStudents = teachers.reduce((a, t) => a + t.students, 0);
-  const avgRating = (teachers.filter((t) => t.rating > 0).reduce((a, t) => a + t.rating, 0) / teachers.filter((t) => t.rating > 0).length).toFixed(1);
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* ── COLORED BANNER ── */}
-      <View style={[styles.headerBanner, { paddingTop: topPad + 8, backgroundColor: "#9B7BC4", overflow: "hidden" }]}>
-        <View style={[styles.dec1, { backgroundColor: "rgba(255,255,255,0.08)" }]} />
-        <View style={[styles.dec2, { backgroundColor: "rgba(255,255,255,0.06)" }]} />
-        <View style={styles.bannerTop}>
-          <View>
-            <Text style={styles.bannerLabel}>ADMIN PANEL</Text>
-            <Text style={styles.bannerTitle}>Teachers</Text>
+  // ==========================
+  // ADD FORM VIEW
+  // ==========================
+  if (showAddForm) {
+    return (
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: "#F4F6F8" }}>
+        <LinearGradient colors={["#7C3AED", "#6D28D9"]} style={[styles.header, { paddingTop: Math.max(insets.top, 40) + 30 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View style={styles.decoCircle1} />
+          <View style={styles.decoCircle2} />
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => setShowAddForm(false)} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Add New Teacher</Text>
+            <View style={{ width: 40 }} />
           </View>
-          <TouchableOpacity onPress={() => setShowAdd(true)} style={[styles.addBtn, { backgroundColor: "rgba(255,255,255,0.22)" }]} activeOpacity={0.85}>
-            <Ionicons name="add" size={16} color="#FFFFFF" />
-            <Text style={styles.addBtnText}>Add Teacher</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={[styles.bannerStrip, { backgroundColor: "rgba(255,255,255,0.15)" }]}>
-          {[
-            { val: teachers.length, label: "Total", icon: "person-circle" },
-            { val: activeCount, label: "Active", icon: "checkmark-circle" },
-            { val: totalStudents, label: "Students", icon: "people" },
-            { val: avgRating, label: "Avg Rating", icon: "star" },
-          ].map((s, i) => (
-            <React.Fragment key={s.label}>
-              <View style={styles.stripStat}>
-                <Ionicons name={s.icon as any} size={12} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.stripVal}>{s.val}</Text>
-                <Text style={styles.stripLabel}>{s.label}</Text>
-              </View>
-              {i < 3 && <View style={[styles.stripDiv, { backgroundColor: "rgba(255,255,255,0.2)" }]} />}
-            </React.Fragment>
-          ))}
-        </View>
-        <View style={[styles.waveCut, { backgroundColor: colors.background }]} />
-      </View>
+        </LinearGradient>
 
-      <View style={[styles.searchWrap, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <View style={[styles.searchBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Ionicons name="search-outline" size={15} color={colors.mutedForeground} />
-          <TextInput value={search} onChangeText={setSearch} placeholder="Search teachers or subject…" placeholderTextColor={colors.mutedForeground} style={[styles.searchInput, { color: colors.foreground }]} />
-          {search.length > 0 && <TouchableOpacity onPress={() => setSearch("")}><Ionicons name="close-circle" size={16} color={colors.mutedForeground} /></TouchableOpacity>}
-        </View>
-      </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formScroll}>
+          <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.formCard}>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}>
-        {filtered.map((t) => (
-          <TouchableOpacity key={t.id} onPress={() => { setSelectedTeacher(t); Haptics.selectionAsync(); }} style={[styles.teacherCard, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: "#000" }]} activeOpacity={0.85}>
-            {/* Colored top accent */}
-            <View style={[styles.cardAccent, { backgroundColor: t.color }]} />
-            <View style={styles.cardBody}>
-              {/* Avatar + info */}
-              <View style={styles.cardTop}>
-                <View style={[styles.avatarRing, { borderColor: t.color + "40" }]}>
-                  <View style={[styles.avatar, { backgroundColor: t.color }]}>
-                    <Text style={styles.avatarText}>{t.avatar}</Text>
-                  </View>
-                </View>
-                <View style={styles.teacherInfo}>
-                  <View style={styles.nameRow}>
-                    <Text style={[styles.teacherName, { color: colors.foreground }]}>{t.name}</Text>
-                    <View style={[styles.statusBadge, {
-                      backgroundColor: t.status === "active" ? "#48BB7818" : colors.muted,
-                      borderColor: t.status === "active" ? "#48BB7830" : colors.border,
-                    }]}>
-                      <View style={[styles.statusDot, { backgroundColor: t.status === "active" ? "#48BB78" : colors.mutedForeground }]} />
-                      <Text style={[styles.statusText, { color: t.status === "active" ? "#48BB78" : colors.mutedForeground }]}>{t.status}</Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.subject, { color: t.color }]}>{t.subject}</Text>
-                  <Text style={[styles.email, { color: colors.mutedForeground }]}>{t.email}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.border} />
-              </View>
-
-              {/* Assigned classes */}
-              {t.assignedClasses.length > 0 && (
-                <View style={styles.classPillRow}>
-                  {t.assignedClasses.map((c) => (
-                    <View key={c} style={[styles.classPill, { backgroundColor: t.color + "18", borderColor: t.color + "30" }]}>
-                      <Text style={[styles.classPillText, { color: t.color }]}>{c}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Stats row */}
-              <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
-                <View style={styles.statItem}>
-                  <Ionicons name="people" size={12} color="#5B9BD5" />
-                  <Text style={[styles.statVal, { color: colors.foreground }]}>{t.students}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Students</Text>
-                </View>
-                <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
-                <View style={styles.statItem}>
-                  <Ionicons name="book" size={12} color="#9B7BC4" />
-                  <Text style={[styles.statVal, { color: colors.foreground }]}>{t.courses}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Courses</Text>
-                </View>
-                <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
-                <View style={styles.statItem}>
-                  <Ionicons name="star" size={12} color="#D69E2E" />
-                  <Text style={[styles.statVal, { color: colors.foreground }]}>{t.rating > 0 ? t.rating : "—"}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Rating</Text>
-                </View>
-                <View style={[styles.statDiv, { backgroundColor: colors.border }]} />
-                <View style={styles.statItem}>
-                  <Ionicons name="time" size={12} color="#48BB78" />
-                  <Text style={[styles.statVal, { color: colors.foreground }]}>{t.experience}</Text>
-                  <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Exp.</Text>
-                </View>
-              </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Teacher Name</Text>
+              <TextInput style={styles.input} placeholder="e.g. Prof. Amit Sharma" value={newName} onChangeText={setNewName} placeholderTextColor="#94A3B8" />
             </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email Address</Text>
+              <TextInput style={styles.input} placeholder="e.g. amit@vidyapath.in" value={newEmail} onChangeText={setNewEmail} autoCapitalize="none" keyboardType="email-address" placeholderTextColor="#94A3B8" />
+            </View>
+            
+            <DropdownSelector
+              label="Assign Class"
+              placeholder="Select Class..."
+              options={classesList}
+              selectedValue={newSubjects}
+              onSelect={setNewSubjects}
+              icon="school"
+            />
 
-      {/* Detail Modal */}
-      <Modal visible={!!selectedTeacher} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-            {selectedTeacher && (
-              <>
-                <View style={styles.modalHeader}>
-                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Teacher Profile</Text>
-                  <TouchableOpacity onPress={() => setSelectedTeacher(null)}>
-                    <Ionicons name="close" size={22} color={colors.mutedForeground} />
-                  </TouchableOpacity>
-                </View>
-                <View style={[styles.modalHero, { backgroundColor: selectedTeacher.color + "12" }]}>
-                  <View style={[styles.bigAvatar, { backgroundColor: selectedTeacher.color }]}>
-                    <Text style={styles.bigAvatarText}>{selectedTeacher.avatar}</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Password</Text>
+              <TextInput style={styles.input} placeholder="Set login password" value={newPassword} onChangeText={setNewPassword} secureTextEntry placeholderTextColor="#94A3B8" />
+            </View>
+
+            <TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.7 }]} onPress={handleAddTeacher} disabled={submitting}>
+              {submitting ? (
+                <Text style={styles.submitText}>Saving...</Text>
+              ) : (
+                <Text style={styles.submitText}>Save Teacher</Text>
+              )}
+            </TouchableOpacity>
+            
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ==========================
+  // LIST VIEW
+  // ==========================
+  return (
+    <View style={styles.container}>
+      {/* HEADER */}
+      <LinearGradient colors={["#7C3AED", "#6D28D9"]} style={[styles.header, { paddingTop: Math.max(insets.top, 40) + 30 }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <View style={styles.decoCircle1} />
+        <View style={styles.decoCircle2} />
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Faculty Directory</Text>
+          <View style={styles.headerRightBtns}>
+            <TouchableOpacity onPress={() => { Haptics.selectionAsync(); setShowAddForm(true); }} style={styles.addBtn}>
+              <Ionicons name="person-add" size={20} color="#7C3AED" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* FLOATING SEARCH */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={20} color="#64748B" />
+          <TextInput style={styles.searchInput} placeholder="Search teachers by name..." placeholderTextColor="#94A3B8" />
+        </View>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>All Teachers</Text>
+          </View>
+          <View style={styles.cardBlock}>
+            {loadingList ? (
+              <View style={{ padding: 20, alignItems: "center" }}><ActivityIndicator color="#7C3AED" /></View>
+            ) : teachers.length === 0 ? (
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_500Medium", color: "#94A3B8" }}>No teachers found.</Text>
+              </View>
+            ) : (
+              teachers.map((t, i) => (
+                <View key={t.id} style={[styles.listItem, i === teachers.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={[styles.listIcon, { backgroundColor: "#F3E8FF" }]}>
+                    <Text style={[styles.listAvatar, { color: "#7C3AED" }]}>{t.name.slice(0, 2).toUpperCase()}</Text>
                   </View>
-                  <Text style={[styles.modalName, { color: colors.foreground }]}>{selectedTeacher.name}</Text>
-                  <Text style={[styles.modalSubject, { color: selectedTeacher.color }]}>{selectedTeacher.subject}</Text>
-                  <Text style={[styles.modalEmail, { color: colors.mutedForeground }]}>{selectedTeacher.email}</Text>
-                </View>
-                {selectedTeacher.assignedClasses.length > 0 && (
-                  <View style={styles.assignSection}>
-                    <Text style={[styles.assignLabel, { color: colors.mutedForeground }]}>ASSIGNED CLASSES</Text>
-                    <View style={styles.classPillRow}>
-                      {selectedTeacher.assignedClasses.map((c) => (
-                        <View key={c} style={[styles.classPill, { backgroundColor: selectedTeacher.color + "18", borderColor: selectedTeacher.color + "30" }]}>
-                          <Text style={[styles.classPillText, { color: selectedTeacher.color }]}>{c}</Text>
-                        </View>
-                      ))}
-                    </View>
+                  <View style={styles.listTextWrap}>
+                    <Text style={styles.listTitle}>{t.name}</Text>
+                    <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 11, color: "#7C3AED", marginBottom: 2 }}>{t.id}</Text>
+                    <Text style={styles.listDesc}>{t.batch || "No subjects assigned"}</Text>
                   </View>
-                )}
-                {[
-                  { label: "Qualification", val: selectedTeacher.qualification },
-                  { label: "Experience", val: selectedTeacher.experience },
-                  { label: "Joined", val: selectedTeacher.joined },
-                  { label: "Total Students", val: `${selectedTeacher.students}` },
-                  { label: "Rating", val: selectedTeacher.rating > 0 ? `${selectedTeacher.rating} / 5.0` : "Not rated yet" },
-                ].map((r) => (
-                  <View key={r.label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
-                    <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>{r.label}</Text>
-                    <Text style={[styles.detailVal, { color: colors.foreground }]}>{r.val}</Text>
+                  <View style={[styles.listRight, { flexDirection: "row", alignItems: "center" }]}>
+                    <TouchableOpacity style={styles.passwordBtn} onPress={() => { setSelectedUser({id: t.id, name: t.name}); setPasswordModalVisible(true); }}>
+                      <Ionicons name="key" size={16} color="#7C3AED" />
+                    </TouchableOpacity>
+                    <Text style={styles.nextText}>{t.email}</Text>
                   </View>
-                ))}
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    onPress={() => { setAssignTarget(selectedTeacher); setSelectedTeacher(null); setShowAssignClass(true); }}
-                    style={[styles.actionBtn, { backgroundColor: "#5B9BD518", borderColor: "#5B9BD530" }]}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="school" size={14} color="#5B9BD5" />
-                    <Text style={[styles.actionBtnText, { color: "#5B9BD5" }]}>Assign Class</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => { toggleStatus(selectedTeacher.id); setSelectedTeacher(null); }}
-                    style={[styles.actionBtn, { backgroundColor: selectedTeacher.status === "active" ? "#E53E3E18" : "#48BB7818", borderColor: selectedTeacher.status === "active" ? "#E53E3E30" : "#48BB7830" }]}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.actionBtnText, { color: selectedTeacher.status === "active" ? "#E53E3E" : "#48BB78" }]}>
-                      {selectedTeacher.status === "active" ? "Deactivate" : "Activate"}
-                    </Text>
-                  </TouchableOpacity>
                 </View>
-              </>
+              ))
             )}
           </View>
-        </View>
-      </Modal>
+        </Animated.View>
+      </ScrollView>
 
-      {/* Assign Class Modal */}
-      <Modal visible={showAssignClass} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Assign Classes</Text>
-              <TouchableOpacity onPress={() => { setShowAssignClass(false); setAssignTarget(null); }}>
-                <Ionicons name="close" size={22} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-            {assignTarget && <Text style={[styles.assignHint, { color: colors.mutedForeground }]}>Tap classes to assign or remove for {assignTarget.name}</Text>}
-            <View style={styles.classGrid}>
-              {ALL_CLASSES.map((cls) => {
-                const assigned = assignTarget?.assignedClasses.includes(cls) ?? false;
-                return (
-                  <TouchableOpacity
-                    key={cls}
-                    onPress={() => assignTarget && toggleClass(assignTarget.id, cls)}
-                    style={[styles.classOption, { backgroundColor: assigned ? "#9B7BC4" : colors.muted, borderColor: assigned ? "#9B7BC4" : colors.border }]}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name={assigned ? "checkmark-circle" : "ellipse-outline"} size={15} color={assigned ? "#FFFFFF" : colors.mutedForeground} />
-                    <Text style={[styles.classOptionText, { color: assigned ? "#FFFFFF" : colors.foreground }]}>{cls}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <TouchableOpacity
-              onPress={() => { setShowAssignClass(false); setAssignTarget(null); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }}
-              style={[styles.submitBtn, { backgroundColor: "#9B7BC4" }]}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-              <Text style={styles.submitBtnText}>Save Assignment</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add Teacher Modal */}
-      <Modal visible={showAdd} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Add New Teacher</Text>
-              <TouchableOpacity onPress={() => setShowAdd(false)}>
-                <Ionicons name="close" size={22} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            </View>
-            {[
-              { label: "Full Name *", val: newName, set: setNewName, ph: "e.g. Dr. Ramesh Kumar" },
-              { label: "Email Address *", val: newEmail, set: setNewEmail, ph: "teacher@school.in" },
-              { label: "Subject", val: newSubject, set: setNewSubject, ph: "e.g. Physics & Chemistry" },
-              { label: "Qualification", val: newQual, set: setNewQual, ph: "e.g. M.Sc, B.Ed" },
-              { label: "Experience", val: newExp, set: setNewExp, ph: "e.g. 5 Years" },
-            ].map((f) => (
-              <View key={f.label} style={styles.fieldGroup}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{f.label}</Text>
-                <View style={[styles.inputRow, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                  <TextInput value={f.val} onChangeText={f.set} placeholder={f.ph} placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground }]} />
-                </View>
-              </View>
-            ))}
-            <TouchableOpacity
-              onPress={addTeacher}
-              style={[styles.submitBtn, { backgroundColor: "#9B7BC4", opacity: newName.trim() && newEmail.trim() ? 1 : 0.5 }]}
-              activeOpacity={0.85}
-              disabled={!newName.trim() || !newEmail.trim()}
-            >
-              <Ionicons name="person-add" size={16} color="#FFFFFF" />
-              <Text style={styles.submitBtnText}>Add Teacher</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {selectedUser && (
+        <ChangePasswordModal
+          visible={passwordModalVisible}
+          onClose={() => setPasswordModalVisible(false)}
+          userId={selectedUser.id}
+          userName={selectedUser.name}
+          themeColor="#7C3AED"
+          onSave={handleUpdatePassword}
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  headerBanner: { paddingHorizontal: 16, paddingBottom: 30, position: "relative" },
-  dec1: { position: "absolute", width: 220, height: 220, borderRadius: 110, top: -60, right: -50 },
-  dec2: { position: "absolute", width: 130, height: 130, borderRadius: 65, bottom: -30, left: -20 },
-  bannerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, zIndex: 1 },
-  bannerLabel: { color: "rgba(255,255,255,0.7)", fontSize: 9, fontFamily: "Poppins_700Bold", letterSpacing: 1.2, marginBottom: 2 },
-  bannerTitle: { color: "#FFFFFF", fontSize: 22, fontFamily: "Poppins_700Bold" },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
-  addBtnText: { color: "#FFFFFF", fontSize: 12, fontFamily: "Poppins_700Bold" },
-  bannerStrip: { flexDirection: "row", alignItems: "center", borderRadius: 16, padding: 12, zIndex: 1 },
-  stripStat: { flex: 1, alignItems: "center", gap: 2 },
-  stripVal: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
-  stripLabel: { color: "rgba(255,255,255,0.75)", fontSize: 9, fontFamily: "Poppins_400Regular" },
-  stripDiv: { width: 1, height: 28 },
-  waveCut: { position: "absolute", bottom: 0, left: 0, right: 0, height: 14, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  searchWrap: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
-  searchBox: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 14, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
-  searchInput: { flex: 1, fontSize: 13, fontFamily: "Poppins_400Regular" },
-  scroll: { paddingHorizontal: 16, paddingTop: 14, gap: 0 },
-  teacherCard: { borderRadius: 18, borderWidth: 1, marginBottom: 12, overflow: "hidden", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-  cardAccent: { height: 4 },
-  cardBody: { padding: 14 },
-  cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 10 },
-  avatarRing: { width: 54, height: 54, borderRadius: 27, borderWidth: 2, justifyContent: "center", alignItems: "center", flexShrink: 0 },
-  avatar: { width: 46, height: 46, borderRadius: 23, justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
-  teacherInfo: { flex: 1, gap: 3 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  teacherName: { flex: 1, fontSize: 13, fontFamily: "Poppins_700Bold" },
-  statusBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
-  statusDot: { width: 5, height: 5, borderRadius: 3 },
-  statusText: { fontSize: 9, fontFamily: "Poppins_600SemiBold" },
-  subject: { fontSize: 11, fontFamily: "Poppins_500Medium" },
-  email: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  classPillRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginBottom: 10 },
-  classPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
-  classPillText: { fontSize: 9, fontFamily: "Poppins_700Bold" },
-  statsRow: { flexDirection: "row", alignItems: "center", borderTopWidth: 1, paddingTop: 10 },
-  statItem: { flex: 1, alignItems: "center", gap: 2 },
-  statVal: { fontSize: 12, fontFamily: "Poppins_700Bold" },
-  statLabel: { fontSize: 9, fontFamily: "Poppins_400Regular" },
-  statDiv: { width: 1, height: 24 },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  modalSheet: { borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, gap: 12, maxHeight: "92%" },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  modalTitle: { fontSize: 17, fontFamily: "Poppins_700Bold" },
-  modalHero: { alignItems: "center", gap: 5, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 20 },
-  bigAvatar: { width: 66, height: 66, borderRadius: 33, justifyContent: "center", alignItems: "center", marginBottom: 4 },
-  bigAvatarText: { color: "#FFFFFF", fontSize: 22, fontFamily: "Poppins_700Bold" },
-  modalName: { fontSize: 17, fontFamily: "Poppins_700Bold" },
-  modalSubject: { fontSize: 12, fontFamily: "Poppins_500Medium" },
-  modalEmail: { fontSize: 11, fontFamily: "Poppins_400Regular" },
-  assignSection: { gap: 6 },
-  assignLabel: { fontSize: 9, fontFamily: "Poppins_600SemiBold", letterSpacing: 0.8 },
-  detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10, borderBottomWidth: 1 },
-  detailLabel: { fontSize: 12, fontFamily: "Poppins_400Regular" },
-  detailVal: { fontSize: 12, fontFamily: "Poppins_600SemiBold" },
-  modalActions: { flexDirection: "row", gap: 10, marginTop: 4 },
-  actionBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 12, borderRadius: 13, borderWidth: 1 },
-  actionBtnText: { fontSize: 12, fontFamily: "Poppins_700Bold" },
-  assignHint: { fontSize: 11, fontFamily: "Poppins_400Regular", marginTop: -4 },
-  classGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  classOption: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, borderWidth: 1, minWidth: "28%" },
-  classOptionText: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
-  fieldGroup: { gap: 4 },
-  fieldLabel: { fontSize: 11, fontFamily: "Poppins_600SemiBold", marginLeft: 2 },
-  inputRow: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
-  input: { fontSize: 13, fontFamily: "Poppins_400Regular" },
-  submitBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, borderRadius: 14, paddingVertical: 14, marginTop: 4 },
-  submitBtnText: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
+  container: { flex: 1, backgroundColor: "#F4F6F8" }, 
+  header: { paddingHorizontal: 20, paddingBottom: 16, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, position: "relative", overflow: "hidden" },
+  decoCircle1: { position: "absolute", top: -50, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.15)" },
+  decoCircle2: { position: "absolute", bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.1)" },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 2 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center" },
+  headerTitle: { fontSize: 20, fontFamily: "Poppins_700Bold", color: "#FFFFFF" },
+  headerRightBtns: { flexDirection: "row", gap: 10 },
+  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFF", justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  
+  searchContainer: { marginTop: -12, paddingHorizontal: 20, zIndex: 10 },
+  searchBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, gap: 10, shadowColor: "#7C3AED", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 5 },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Poppins_400Regular", color: "#0F172A", padding: 0 },
+
+  scroll: { paddingBottom: 100, paddingTop: 20 },
+  section: { paddingHorizontal: 20, marginBottom: 30 },
+  sectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0F172A", letterSpacing: -0.5 },
+
+  cardBlock: { backgroundColor: "#FFFFFF", borderRadius: 24, paddingHorizontal: 18, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 },
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 14 },
+  listIcon: { width: 44, height: 44, borderRadius: 22, justifyContent: "center", alignItems: "center" },
+  listAvatar: { fontSize: 15, fontFamily: "Poppins_700Bold" },
+  listTextWrap: { flex: 1 },
+  listTitle: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#0F172A", marginBottom: 2 },
+  listDesc: { fontSize: 12, fontFamily: "Poppins_400Regular", color: "#64748B" },
+  listRight: { alignItems: "center" },
+  nextText: { fontSize: 11, fontFamily: "Poppins_500Medium", color: "#64748B" },
+  passwordBtn: { backgroundColor: "#F3E8FF", width: 32, height: 32, borderRadius: 10, justifyContent: "center", alignItems: "center", marginRight: 8 },
+
+  // FORM STYLES
+  formScroll: { padding: 20, paddingBottom: 60 },
+  formCard: { backgroundColor: "#FFF", borderRadius: 24, padding: 24, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 4 },
+
+  inputGroup: { marginBottom: 20 },
+  label: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#334155", marginBottom: 8, marginLeft: 4 },
+  input: { backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 16, fontSize: 15, fontFamily: "Poppins_400Regular", color: "#0F172A" },
+  
+  submitBtn: { backgroundColor: "#7C3AED", borderRadius: 16, paddingVertical: 18, alignItems: "center", marginTop: 10, shadowColor: "#7C3AED", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  submitText: { color: "#FFFFFF", fontSize: 16, fontFamily: "Poppins_700Bold" },
 });
+
+
+
+

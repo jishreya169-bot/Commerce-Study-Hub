@@ -1,307 +1,447 @@
 import React, { useState, useEffect } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, useWindowDimensions,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, useWindowDimensions, TextInput, ActivityIndicator, Modal
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { useColors } from "@/hooks/useColors";
+import { useRouter, useFocusEffect } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
-import { StatCardSkeleton } from "@/components/Skeleton";
+import { useTeacherContext } from "../../context/TeacherContext";
 import * as Haptics from "expo-haptics";
+import Animated, { FadeInDown, FadeInRight, FadeInUp } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
+import { BlurView } from "expo-blur";
+import { turso } from "../../lib/turso";
 
-const SCHEDULE = [
-  { id: "s1", subject: "Accountancy", topic: "Trial Balance — Chapter 4", time: "10:00 AM", duration: "60 min", students: 42, color: "#5B9BD5", isLive: true },
-  { id: "s2", subject: "Economics", topic: "National Income Concepts", time: "12:30 PM", duration: "45 min", students: 38, color: "#5BAD9B", isLive: false },
-  { id: "s3", subject: "Accountancy", topic: "Depreciation Methods", time: "3:00 PM", duration: "60 min", students: 42, color: "#5B9BD5", isLive: false },
+const QUICK_ACTIONS = [
+  { label: "Timetable", icon: "time", route: "/(teacher)/timetable", colors: ["#FEF2F2", "#FECACA"], iconColor: "#DC2626" },
+  { label: "My Classes", icon: "list", route: "/(teacher)/classes", colors: ["#DBEAFE", "#BFDBFE"], iconColor: "#2563EB" },
+  { label: "Attendance", icon: "calendar", route: "/(teacher)/attendance", colors: ["#F3E8FF", "#E9D5FF"], iconColor: "#7C3AED" },
+  { label: "Add Homework", icon: "clipboard", route: "/(teacher)/upload", colors: ["#FCE7F3", "#FBCFE8"], iconColor: "#DB2777" },
+  { label: "Exams & Results", icon: "document-text", route: "/(teacher)/exams", colors: ["#FEF3C7", "#FDE68A"], iconColor: "#D97706" },
+  { label: "Answer Doubts", icon: "help-circle", route: "/(teacher)/doubts", colors: ["#D1FAE5", "#A7F3D0"], iconColor: "#059669" },
+  { label: "Submissions", icon: "checkmark-done-circle", route: "/(teacher)/submissions", colors: ["#E0F2FE", "#BAE6FD"], iconColor: "#0284C7" },
 ];
 
-const PENDING_DOUBTS = [
-  { id: "d1", student: "Priya S.", subject: "Accountancy", question: "What is the difference between straight-line and written-down value method?", time: "20 min ago", urgent: true },
-  { id: "d2", student: "Rahul M.", subject: "Economics", question: "How is GDP different from GNP? Please explain with examples.", time: "1 hr ago", urgent: false },
-  { id: "d3", student: "Ananya K.", subject: "Accountancy", question: "Why do we prepare Trading Account separately?", time: "2 hr ago", urgent: false },
-];
-
-const ACTIVITY = [
-  { id: "a1", label: "Priya Sharma completed Trial Balance lecture", time: "5 min ago", icon: "checkmark-circle", color: "#48BB78" },
-  { id: "a2", label: "Rahul Mehta scored 90% in Economics Test 3", time: "30 min ago", icon: "trophy", color: "#D69E2E" },
-  { id: "a3", label: "Ananya Kapoor posted a new doubt", time: "45 min ago", icon: "help-circle", color: "#5B9BD5" },
-  { id: "a4", label: "Vikram Singh joined live Accountancy class", time: "1 hr ago", icon: "radio", color: "#E53E3E" },
-];
-
-export default function TeacherHome() {
-  const colors = useColors();
+// ── COMPONENT ─────────────────────────────────────────────────
+export default function TeacherDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const { width } = useWindowDimensions();
+  const { activeClass, setActiveClass, classesList } = useTeacherContext();
+  const topPad = Platform.OS === "web" ? 50 : insets.top;
+  
+  const [showClassDropdown, setShowClassDropdown] = useState(false);
+
+  // Dynamic state
+  const [kpis, setKpis] = useState({ students: "...", classes: "...", doubts: "...", attendance: "..." });
+  const [upcomingClasses, setUpcomingClasses] = useState<any[]>([]);
+  const [pendingDoubts, setPendingDoubts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
 
-  useEffect(() => { const t = setTimeout(() => setLoading(false), 900); return () => clearTimeout(t); }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      const fetchAll = async () => {
+      try {
+        // KPI: Total students
+        let sQuery = "SELECT COUNT(*) FROM users WHERE role = 'student'";
+        let sArgs: any[] = [];
+        if (activeClass !== "All") {
+          sQuery += " AND batch = ?";
+          sArgs.push(activeClass);
+        }
+        const sRes = await turso.execute({ sql: sQuery, args: sArgs });
+        const totalStudents = sRes.rows[0]?.[0]?.toString() || "0";
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+        // KPI: Classes for this teacher
+        let classCount = "0";
+        let classRows: any[] = [];
+        if (user?.id) {
+          let cQuery = "SELECT id, title, batch, time, color FROM timetable WHERE teacherId = ?";
+          let cArgs: any[] = [user.id];
+          if (activeClass !== "All") {
+            cQuery += " AND batch = ?";
+            cArgs.push(activeClass);
+          }
+          const cRes = await turso.execute({ sql: cQuery, args: cArgs });
+          classCount = cRes.rows.length.toString();
+          classRows = cRes.rows.map(r => ({
+            id: r[0] as string,
+            title: r[1] as string,
+            batch: r[2] as string,
+            time: r[3] as string,
+            color: r[4] as string || "#3B82F6",
+            type: "Lecture"
+          }));
+        }
+        setUpcomingClasses(classRows.slice(0, 3));
+
+        // KPI: Pending doubts
+        let dDataQuery = "SELECT id, studentName, batch, question, timestamp FROM doubts WHERE status = 'pending'";
+        let dDataArgs: any[] = [];
+        if (activeClass !== "All") {
+          dDataQuery += " AND batch = ?";
+          dDataArgs.push(activeClass);
+        }
+        dDataQuery += " ORDER BY timestamp DESC LIMIT 3";
+        const dRes = await turso.execute({ sql: dDataQuery, args: dDataArgs });
+        const doubtsData = dRes.rows.map(r => ({
+          id: r[0] as string,
+          student: r[1] as string,
+          batch: r[2] as string,
+          question: r[3] as string,
+          time: r[4] as string || "Recently"
+        }));
+        setPendingDoubts(doubtsData);
+
+        // KPI: Full pending count
+        let dQuery = "SELECT COUNT(*) FROM doubts WHERE status = 'pending'";
+        let dArgs: any[] = [];
+        if (activeClass !== "All") {
+          dQuery += " AND batch = ?";
+          dArgs.push(activeClass);
+        }
+        const dCountRes = await turso.execute({ sql: dQuery, args: dArgs });
+        const fullPendingCount = dCountRes.rows[0]?.[0]?.toString() || "0";
+
+        setKpis({
+          students: totalStudents,
+          classes: classCount,
+          doubts: fullPendingCount,
+          attendance: "N/A"
+        });
+      } catch (e) {
+        console.error("Teacher Dashboard Error:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAll();
+  }, [user?.id, activeClass])
+  );
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color="#0EA5E9" />
+      </View>
+    );
+  }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* ── HEADER ── */}
-      <View style={[styles.header, { paddingTop: topPad + 8, backgroundColor: "#48BB78", overflow: "hidden" }]}>
-        <View style={[styles.decCircle1, { backgroundColor: "rgba(255,255,255,0.08)" }]} />
-        <View style={[styles.decCircle2, { backgroundColor: "rgba(255,255,255,0.06)" }]} />
+    <View style={styles.container}>
+      
+      {/* ── COLORFUL HEADER ── */}
+      <LinearGradient 
+        colors={["#0EA5E9", "#2563EB"]} 
+        style={[styles.header, { paddingTop: topPad + 10 }]}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.decoCircle1} />
+        <View style={styles.decoCircle2} />
+
         <View style={styles.headerTop}>
-          <View style={styles.headerLeft}>
-            <View style={[styles.greetPill, { backgroundColor: "rgba(255,255,255,0.2)" }]}>
-              <Ionicons name="sunny" size={11} color="rgba(255,255,255,0.9)" />
-              <Text style={styles.greetPillText}>{greeting}</Text>
-            </View>
-            <Text style={styles.headerName}>{user?.name ?? "Professor"}</Text>
-            <Text style={styles.headerSub}>{user?.subject}</Text>
+          <View>
+            <Text style={styles.greeting}>Welcome Back 👋</Text>
+            <Text style={styles.adminName}>{user?.name ?? "Teacher"}</Text>
           </View>
-          <TouchableOpacity onPress={() => router.push("/(teacher)/profile")} activeOpacity={0.85}>
-            <View style={[styles.avatarRing, { borderColor: "rgba(255,255,255,0.4)" }]}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{user?.avatar ?? "T"}</Text>
-              </View>
+          
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={() => { Haptics.selectionAsync(); router.push("/(teacher)/notifications"); }} activeOpacity={0.7}>
+              <BlurView intensity={30} tint="light" style={styles.activityBtn}>
+                <Ionicons name="notifications" size={22} color="#FFFFFF" />
+                <View style={styles.notificationDot} />
+              </BlurView>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => router.push("/(teacher)/profile")} style={styles.avatarWrap}>
+              {user?.avatar === 'boy' ? (
+                <Image source={{ uri: "https://avatar.iran.liara.run/public/boy" }} style={styles.avatarImage} contentFit="cover" transition={200} />
+              ) : user?.avatar === 'girl' ? (
+                <Image source={{ uri: "https://avatar.iran.liara.run/public/girl" }} style={styles.avatarImage} contentFit="cover" transition={200} />
+              ) : user?.avatar && user.avatar.length > 2 ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatarImage} contentFit="cover" transition={200} />
+              ) : (
+                <View style={[styles.avatarImage, { backgroundColor: "#2563EB", justifyContent: "center", alignItems: "center" }]}>
+                  <Text style={{ color: "#FFF", fontSize: 18, fontFamily: "Poppins_700Bold" }}>{user?.avatar || user?.name?.charAt(0) || "T"}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+      </LinearGradient>
+
+      {/* DROPDOWN MODAL */}
+      <Modal visible={showClassDropdown} transparent animationType="fade">
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" }} activeOpacity={1} onPress={() => setShowClassDropdown(false)}>
+          <View style={{ width: "80%", backgroundColor: "#FFF", borderRadius: 24, padding: 20, maxHeight: "60%" }}>
+            <Text style={{ fontSize: 16, fontFamily: "Poppins_700Bold", color: "#0F172A", marginBottom: 16 }}>Select Active Class</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {classesList.map(c => (
+                <TouchableOpacity 
+                  key={c}
+                  style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setActiveClass(c);
+                    setShowClassDropdown(false);
+                  }}
+                >
+                  <Text style={{ fontSize: 15, fontFamily: "Poppins_600SemiBold", color: activeClass === c ? "#0EA5E9" : "#334155" }}>{c}</Text>
+                  {activeClass === c && <Ionicons name="checkmark-circle" size={20} color="#0EA5E9" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Floating Action Bar (Search & Active Class 50-50) */}
+      <View style={styles.searchContainer}>
+        <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
+          
+          {/* Active Class Dropdown (50%) */}
+          <TouchableOpacity 
+            style={[styles.searchBox, { flex: 1, justifyContent: "space-between" }]}
+            onPress={() => { Haptics.selectionAsync(); setShowClassDropdown(true); }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Ionicons name="people" size={18} color="#0EA5E9" />
+              <Text style={{ fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" }} numberOfLines={1}>
+                {activeClass}
+              </Text>
             </View>
+            <Ionicons name="chevron-down" size={18} color="#64748B" />
           </TouchableOpacity>
-        </View>
 
-        {/* Stats strip */}
-        <View style={[styles.statsStrip, { backgroundColor: "rgba(255,255,255,0.15)" }]}>
-          {[
-            { icon: "people", val: "45", label: "Students" },
-            { icon: "book", val: "3", label: "Courses" },
-            { icon: "help-circle", val: "8", label: "Doubts" },
-            { icon: "star", val: "4.9", label: "Rating" },
-          ].map((s, i) => (
-            <React.Fragment key={s.label}>
-              <View style={styles.stripStat}>
-                <Ionicons name={s.icon as any} size={13} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.stripVal}>{s.val}</Text>
-                <Text style={styles.stripLabel}>{s.label}</Text>
-              </View>
-              {i < 3 && <View style={[styles.stripDiv, { backgroundColor: "rgba(255,255,255,0.2)" }]} />}
-            </React.Fragment>
-          ))}
-        </View>
+          {/* Search Box (50%) */}
+          <View style={[styles.searchBox, { flex: 1 }]}>
+            <Ionicons name="search" size={18} color="#64748B" />
+            <TextInput 
+              style={[styles.searchInput, { fontSize: 13 }]}
+              placeholder="Search..."
+              placeholderTextColor="#94A3B8"
+              editable={false}
+            />
+          </View>
 
-        {/* Wave bottom */}
-        <View style={[styles.waveCut, { backgroundColor: colors.background }]} />
+        </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: Platform.OS === "web" ? 110 : 110 }]}>
-
-        {/* Quick action chips */}
-        <View style={styles.quickChips}>
-          {[
-            { label: "Live Now", icon: "radio", color: "#E53E3E", route: "/(teacher)/live" },
-            { label: "Doubts", icon: "help-circle", color: "#48BB78", route: "/(teacher)/doubts" },
-            { label: "Courses", icon: "book", color: "#5B9BD5", route: "/(teacher)/classes" },
-            { label: "Students", icon: "people", color: "#9B7BC4", route: "/(teacher)/students" },
-          ].map((q) => (
-            <TouchableOpacity
-              key={q.label}
-              onPress={() => { Haptics.selectionAsync(); router.push(q.route as any); }}
-              style={[styles.quickChip, { backgroundColor: colors.card, borderColor: colors.border }]}
-              activeOpacity={0.82}
-            >
-              <View style={[styles.quickChipIcon, { backgroundColor: q.color + "18" }]}>
-                <Ionicons name={q.icon as any} size={18} color={q.color} />
-              </View>
-              <Text style={[styles.quickChipLabel, { color: colors.foreground }]}>{q.label}</Text>
-            </TouchableOpacity>
-          ))}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        
+        {/* ── KPI SCROLL ── */}
+        <View style={styles.kpiSection}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.kpiScroll}>
+            {[
+              { title: "Total Students", val: kpis.students, icon: "people", color: "#3B82F6", bg: "#EFF6FF", trend: "All Enrolled" },
+              { title: "My Classes", val: kpis.classes, icon: "book", color: "#8B5CF6", bg: "#F5F3FF", trend: "In Timetable" },
+              { title: "Pending Doubts", val: kpis.doubts, icon: "help-circle", color: "#EF4444", bg: "#FEF2F2", trend: "Needs Reply" },
+            ].map((k, i) => (
+              <Animated.View key={k.title} entering={FadeInRight.delay(100 + i * 100).springify()} style={[styles.kpiCard, { borderTopColor: k.color, borderTopWidth: 4 }]}>
+                <View style={styles.kpiTop}>
+                  <View style={[styles.kpiIconWrap, { backgroundColor: k.bg }]}>
+                    <Ionicons name={k.icon as any} size={22} color={k.color} />
+                  </View>
+                </View>
+                <Text style={styles.kpiVal}>{k.val}</Text>
+                <Text style={styles.kpiTitle}>{k.title}</Text>
+                <Text style={styles.kpiTrend}>{k.trend}</Text>
+              </Animated.View>
+            ))}
+          </ScrollView>
         </View>
 
-        {/* Today's Schedule */}
-        <View style={styles.section}>
+        {/* ── QUICK ACTIONS ── */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
           <View style={styles.sectionHead}>
-            <View style={[styles.sectionIconWrap, { backgroundColor: "#5B9BD518" }]}>
-              <Ionicons name="calendar" size={14} color="#5B9BD5" />
-            </View>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Today's Schedule</Text>
-            <View style={[styles.sectionBadge, { backgroundColor: "#48BB7818" }]}>
-              <Text style={[styles.sectionBadgeText, { color: "#48BB78" }]}>3 classes</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Dashboard Hub</Text>
           </View>
-          {loading ? (
-            <><StatCardSkeleton /><StatCardSkeleton /></>
-          ) : (
-            SCHEDULE.map((cls) => (
-              <TouchableOpacity
-                key={cls.id}
-                style={[styles.classCard, { backgroundColor: colors.card, borderColor: cls.isLive ? cls.color + "40" : colors.border }]}
-                activeOpacity={0.85}
-                onPress={() => { Haptics.selectionAsync(); router.push("/(teacher)/live" as any); }}
-              >
-                {cls.isLive && <View style={[styles.liveStripe, { backgroundColor: "#E53E3E" }]} />}
-                <View style={[styles.classIconWrap, { backgroundColor: cls.color + "18" }]}>
-                  <Ionicons name={cls.isLive ? "radio" : "book-outline"} size={18} color={cls.isLive ? "#E53E3E" : cls.color} />
-                </View>
-                <View style={styles.classInfo}>
-                  <View style={styles.classTimeRow}>
-                    {cls.isLive && (
-                      <View style={[styles.liveChip, { backgroundColor: "#E53E3E" }]}>
-                        <View style={styles.liveDot} />
-                        <Text style={styles.liveChipText}>LIVE</Text>
-                      </View>
-                    )}
-                    {!cls.isLive && <Text style={[styles.classTimeText, { color: colors.mutedForeground }]}>{cls.time}</Text>}
-                    <Text style={[styles.classSubject, { color: cls.color }]}>{cls.subject}</Text>
+          <View style={styles.qaGrid}>
+            {QUICK_ACTIONS.map((q, i) => (
+              <TouchableOpacity key={i} onPress={() => { Haptics.selectionAsync(); router.push(q.route as any); }} style={styles.qaCardWrapper}>
+                <LinearGradient colors={q.colors as any} style={styles.qaCard} start={{x:0, y:0}} end={{x:1, y:1}}>
+                  <View style={styles.qaIconWrap}>
+                    <Ionicons name={q.icon as any} size={24} color={q.iconColor} />
                   </View>
-                  <Text style={[styles.classTopic, { color: colors.foreground }]}>{cls.topic}</Text>
-                  <View style={styles.classMeta}>
-                    <Ionicons name="time-outline" size={11} color={colors.mutedForeground} />
-                    <Text style={[styles.classMetaText, { color: colors.mutedForeground }]}>{cls.duration}</Text>
-                    <Text style={[styles.classDot, { color: colors.mutedForeground }]}>•</Text>
-                    <Ionicons name="people-outline" size={11} color={colors.mutedForeground} />
-                    <Text style={[styles.classMetaText, { color: colors.mutedForeground }]}>{cls.students} students</Text>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={[styles.startBtn, { backgroundColor: cls.isLive ? "#E53E3E" : "#48BB78" }]}
-                  activeOpacity={0.85}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/(teacher)/live" as any); }}
-                >
-                  <Ionicons name={cls.isLive ? "radio" : "play"} size={13} color="#FFFFFF" />
-                  <Text style={styles.startBtnText}>{cls.isLive ? "Join" : "Start"}</Text>
-                </TouchableOpacity>
+                  <Text style={[styles.qaLabel, { color: q.iconColor }]}>{q.label}</Text>
+                </LinearGradient>
               </TouchableOpacity>
-            ))
-          )}
-        </View>
-
-        {/* Pending Doubts */}
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <View style={[styles.sectionIconWrap, { backgroundColor: "#E53E3E18" }]}>
-              <Ionicons name="help-circle" size={14} color="#E53E3E" />
-            </View>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Pending Doubts</Text>
-            <TouchableOpacity onPress={() => router.push("/(teacher)/doubts")}>
-              <Text style={[styles.seeAll, { color: "#48BB78" }]}>See all (8) →</Text>
-            </TouchableOpacity>
-          </View>
-          {loading ? <StatCardSkeleton /> : (
-            PENDING_DOUBTS.map((d) => (
-              <TouchableOpacity
-                key={d.id}
-                style={[styles.doubtCard, { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: d.urgent ? "#E53E3E" : colors.border, borderLeftWidth: d.urgent ? 4 : 1 }]}
-                activeOpacity={0.85}
-                onPress={() => router.push("/(teacher)/doubts")}
-              >
-                <View style={[styles.doubtAvatar, { backgroundColor: "#48BB7818" }]}>
-                  <Ionicons name="person" size={15} color="#48BB78" />
-                </View>
-                <View style={styles.doubtInfo}>
-                  <View style={styles.doubtRow}>
-                    <Text style={[styles.doubtStudent, { color: colors.foreground }]}>{d.student}</Text>
-                    {d.urgent && <View style={[styles.urgentPill, { backgroundColor: "#E53E3E18" }]}><Text style={[styles.urgentText, { color: "#E53E3E" }]}>Urgent</Text></View>}
-                    <Text style={[styles.doubtSubject, { color: "#48BB78" }]}>{d.subject}</Text>
-                  </View>
-                  <Text style={[styles.doubtQ, { color: colors.mutedForeground }]} numberOfLines={1}>{d.question}</Text>
-                  <Text style={[styles.doubtTime, { color: colors.mutedForeground }]}>{d.time}</Text>
-                </View>
-                <View style={[styles.answerBtn, { backgroundColor: "#48BB7818" }]}>
-                  <Text style={[styles.answerBtnText, { color: "#48BB78" }]}>Answer</Text>
-                </View>
-              </TouchableOpacity>
-            ))
-          )}
-        </View>
-
-        {/* Recent Activity */}
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <View style={[styles.sectionIconWrap, { backgroundColor: "#9B7BC418" }]}>
-              <Ionicons name="pulse" size={14} color="#9B7BC4" />
-            </View>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Recent Activity</Text>
-          </View>
-          <View style={[styles.activityCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {ACTIVITY.map((a, i) => (
-              <View key={a.id} style={[styles.activityRow, { borderBottomColor: i === ACTIVITY.length - 1 ? "transparent" : colors.border }]}>
-                <View style={[styles.activityIcon, { backgroundColor: a.color + "18" }]}>
-                  <Ionicons name={a.icon as any} size={14} color={a.color} />
-                </View>
-                <View style={styles.activityInfo}>
-                  <Text style={[styles.activityLabel, { color: colors.foreground }]}>{a.label}</Text>
-                  <Text style={[styles.activityTime, { color: colors.mutedForeground }]}>{a.time}</Text>
-                </View>
-              </View>
             ))}
           </View>
-        </View>
+        </Animated.View>
+
+        {/* ── TODAY'S SCHEDULE ── */}
+        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>My Classes Today</Text>
+            <TouchableOpacity onPress={() => router.push("/(teacher)/classes")}><Text style={styles.seeAll}>Timetable</Text></TouchableOpacity>
+          </View>
+          <View style={styles.cardBlock}>
+            {loading ? (
+              <View style={{ padding: 20, alignItems: "center" }}><ActivityIndicator color="#0EA5E9" /></View>
+            ) : upcomingClasses.length === 0 ? (
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_500Medium", color: "#94A3B8" }}>No classes scheduled yet.</Text>
+              </View>
+            ) : (
+              upcomingClasses.map((u, i) => (
+                <View key={u.id} style={[styles.listItem, i === upcomingClasses.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={[styles.timeBox, { backgroundColor: u.color + "15" }]}>
+                    <Ionicons name="book" size={28} color={u.color} />
+                  </View>
+                  <View style={styles.listContent}>
+                    <View style={styles.listRow}>
+                      <Text style={styles.listTitle} numberOfLines={1}>{u.title}</Text>
+                    </View>
+                    <View style={styles.listRowMeta}>
+                      <Text style={styles.listMeta}><Ionicons name="people-outline" size={12}/> {u.batch}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity style={styles.actionPillBtn} onPress={() => router.push("/(teacher)/classes")}>
+                    <Text style={styles.actionPillText}>View</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+        </Animated.View>
+
+        {/* ── PENDING DOUBTS ── */}
+        <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>Pending Doubts</Text>
+            <TouchableOpacity onPress={() => router.push("/(teacher)/doubts")}><Text style={styles.seeAll}>View All</Text></TouchableOpacity>
+          </View>
+          <View style={styles.cardBlock}>
+            {loading ? (
+              <View style={{ padding: 20, alignItems: "center" }}><ActivityIndicator color="#0EA5E9" /></View>
+            ) : pendingDoubts.length === 0 ? (
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_500Medium", color: "#94A3B8" }}>No pending doubts! 🎉</Text>
+              </View>
+            ) : (
+              pendingDoubts.map((d, i) => (
+                <View key={d.id} style={[styles.doubtItem, i === pendingDoubts.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View style={styles.doubtHeader}>
+                    <View style={styles.doubtStudent}>
+                      <Ionicons name="person-circle" size={18} color="#94A3B8" />
+                      <Text style={styles.doubtStudentName}>{d.student}</Text>
+                      <View style={styles.batchPill}>
+                        <Text style={styles.batchPillText}>{d.batch}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.doubtTime}>{d.time}</Text>
+                  </View>
+                  <Text style={styles.doubtQuestion} numberOfLines={2}>"{d.question}"</Text>
+                  <TouchableOpacity style={styles.replyBtn} onPress={() => router.push("/(teacher)/doubts")}>
+                    <Ionicons name="chatbubble-ellipses" size={14} color="#0EA5E9" />
+                    <Text style={styles.replyBtnText}>Answer Now</Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+        </Animated.View>
+
       </ScrollView>
     </View>
   );
 }
 
+// ── STYLES ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 32, position: "relative" },
-  decCircle1: { position: "absolute", width: 230, height: 230, borderRadius: 115, top: -50, right: -50 },
-  decCircle2: { position: "absolute", width: 130, height: 130, borderRadius: 65, bottom: 0, left: -30 },
-  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, zIndex: 1 },
-  headerLeft: { gap: 2 },
-  greetPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, alignSelf: "flex-start", marginBottom: 4 },
-  greetPillText: { color: "rgba(255,255,255,0.9)", fontSize: 10, fontFamily: "Poppins_600SemiBold" },
-  headerName: { color: "#FFFFFF", fontSize: 21, fontFamily: "Poppins_700Bold" },
-  headerSub: { color: "rgba(255,255,255,0.8)", fontSize: 11, fontFamily: "Poppins_400Regular" },
-  avatarRing: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, justifyContent: "center", alignItems: "center" },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.25)", justifyContent: "center", alignItems: "center" },
-  avatarText: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
-  statsStrip: { flexDirection: "row", alignItems: "center", borderRadius: 16, padding: 12, zIndex: 1 },
-  stripStat: { flex: 1, alignItems: "center", gap: 2 },
-  stripVal: { color: "#FFFFFF", fontSize: 15, fontFamily: "Poppins_700Bold" },
-  stripLabel: { color: "rgba(255,255,255,0.75)", fontSize: 9, fontFamily: "Poppins_400Regular" },
-  stripDiv: { width: 1, height: 28 },
-  waveCut: { position: "absolute", bottom: 0, left: 0, right: 0, height: 16, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  scroll: { paddingHorizontal: 16, paddingTop: 16, gap: 0 },
-  quickChips: { flexDirection: "row", gap: 8, marginBottom: 18 },
-  quickChip: { flex: 1, alignItems: "center", borderRadius: 14, borderWidth: 1, paddingVertical: 12, gap: 6 },
-  quickChipIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: "center", alignItems: "center" },
-  quickChipLabel: { fontSize: 10, fontFamily: "Poppins_600SemiBold" },
-  section: { marginBottom: 20 },
-  sectionHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
-  sectionIconWrap: { width: 26, height: 26, borderRadius: 7, justifyContent: "center", alignItems: "center" },
-  sectionTitle: { flex: 1, fontSize: 16, fontFamily: "Poppins_700Bold" },
-  sectionBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  sectionBadgeText: { fontSize: 10, fontFamily: "Poppins_600SemiBold" },
-  seeAll: { fontSize: 12, fontFamily: "Poppins_500Medium" },
-  classCard: { flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, padding: 12, marginBottom: 10, gap: 10, overflow: "hidden" },
-  liveStripe: { position: "absolute", left: 0, top: 0, bottom: 0, width: 3 },
-  classIconWrap: { width: 42, height: 42, borderRadius: 12, justifyContent: "center", alignItems: "center", flexShrink: 0 },
-  classInfo: { flex: 1, gap: 3 },
-  classTimeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  liveChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8 },
-  liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#FFFFFF" },
-  liveChipText: { color: "#FFFFFF", fontSize: 9, fontFamily: "Poppins_700Bold", letterSpacing: 0.5 },
-  classTimeText: { fontSize: 11, fontFamily: "Poppins_600SemiBold" },
-  classSubject: { fontSize: 10, fontFamily: "Poppins_600SemiBold", textTransform: "uppercase", letterSpacing: 0.4 },
-  classTopic: { fontSize: 13, fontFamily: "Poppins_600SemiBold" },
-  classMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
-  classMetaText: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  classDot: { fontSize: 10 },
-  startBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, flexShrink: 0 },
-  startBtnText: { color: "#FFFFFF", fontSize: 11, fontFamily: "Poppins_700Bold" },
-  doubtCard: { flexDirection: "row", alignItems: "flex-start", borderRadius: 14, borderWidth: 1, padding: 12, marginBottom: 8, gap: 10 },
-  doubtAvatar: { width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center", flexShrink: 0 },
-  doubtInfo: { flex: 1, gap: 3 },
-  doubtRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  doubtStudent: { fontSize: 12, fontFamily: "Poppins_700Bold" },
-  urgentPill: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 },
-  urgentText: { fontSize: 9, fontFamily: "Poppins_700Bold" },
-  doubtSubject: { fontSize: 10, fontFamily: "Poppins_500Medium" },
-  doubtQ: { fontSize: 12, fontFamily: "Poppins_400Regular", lineHeight: 17 },
-  doubtTime: { fontSize: 10, fontFamily: "Poppins_400Regular" },
-  answerBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, flexShrink: 0, alignSelf: "flex-start" },
-  answerBtnText: { fontSize: 11, fontFamily: "Poppins_700Bold" },
-  activityCard: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  activityRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderBottomWidth: 1 },
-  activityIcon: { width: 32, height: 32, borderRadius: 9, justifyContent: "center", alignItems: "center", flexShrink: 0 },
-  activityInfo: { flex: 1, gap: 2 },
-  activityLabel: { fontSize: 12, fontFamily: "Poppins_500Medium", lineHeight: 17 },
-  activityTime: { fontSize: 10, fontFamily: "Poppins_400Regular" },
+  container: { flex: 1, backgroundColor: "#F4F6F8" }, 
+  
+  header: { paddingHorizontal: 20, paddingBottom: 16, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, position: "relative", overflow: "hidden" },
+  decoCircle1: { position: "absolute", top: -50, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255,255,255,0.15)" },
+  decoCircle2: { position: "absolute", bottom: -40, left: -40, width: 120, height: 120, borderRadius: 60, backgroundColor: "rgba(255,255,255,0.1)" },
+  
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10, zIndex: 2 },
+  greeting: { fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "rgba(255,255,255,0.9)", marginBottom: 2 },
+  adminName: { fontSize: 24, fontFamily: "Poppins_700Bold", color: "#FFFFFF", letterSpacing: -0.5 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
+  activityBtn: { 
+    width: 44, 
+    height: 44, 
+    borderRadius: 22, 
+    justifyContent: "center", 
+    alignItems: "center", 
+    borderWidth: 1, 
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    overflow: "hidden"
+  },
+  notificationDot: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#EF4444",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.8)"
+  },
+  avatarWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.25)", borderWidth: 2, borderColor: "rgba(255,255,255,0.6)", justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, overflow: "hidden" },
+  avatarImage: { width: "100%", height: "100%" },
+
+  searchContainer: { marginTop: -12, paddingHorizontal: 20, zIndex: 10 },
+  searchBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, gap: 10, shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 5 },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Poppins_400Regular", color: "#0F172A", padding: 0 },
+
+  kpiSection: { marginTop: 16, marginBottom: 26 },
+  kpiScroll: { paddingHorizontal: 20, gap: 14 },
+  kpiCard: { width: 160, backgroundColor: "#FFFFFF", padding: 16, borderRadius: 20, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
+  kpiTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  kpiIconWrap: { width: 42, height: 42, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  kpiVal: { fontSize: 24, fontFamily: "Poppins_700Bold", color: "#0F172A", marginBottom: 2 },
+  kpiTitle: { fontSize: 12, fontFamily: "Poppins_500Medium", color: "#64748B", marginBottom: 4 },
+  kpiTrend: { fontSize: 10, fontFamily: "Poppins_500Medium", color: "#94A3B8" },
+
+  scroll: { paddingBottom: 100 },
+  section: { paddingHorizontal: 20, marginBottom: 30 },
+  sectionHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontFamily: "Poppins_700Bold", color: "#0F172A", letterSpacing: -0.5 },
+  seeAll: { fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0EA5E9" },
+
+  qaGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 12 },
+  qaCardWrapper: { width: "31%", shadowColor: "#0EA5E9", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 2 },
+  qaCard: { paddingVertical: 18, borderRadius: 24, alignItems: "center" },
+  qaIconWrap: { width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(255,255,255,0.6)", justifyContent: "center", alignItems: "center", marginBottom: 8 },
+  qaLabel: { fontSize: 11, fontFamily: "Poppins_700Bold" },
+
+  cardBlock: { backgroundColor: "#FFFFFF", borderRadius: 24, paddingHorizontal: 18, shadowColor: "#94A3B8", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 },
+  
+  listItem: { flexDirection: "row", alignItems: "center", paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 14 },
+  timeBox: { width: 65, height: 65, borderRadius: 16, justifyContent: "center", alignItems: "center" },
+  timeMain: { fontSize: 16, fontFamily: "Poppins_700Bold" },
+  timeSub: { fontSize: 11, fontFamily: "Poppins_600SemiBold" },
+  listContent: { flex: 1, justifyContent: "center", gap: 6 },
+  listRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  listTitle: { fontSize: 15, fontFamily: "Poppins_600SemiBold", color: "#0F172A", flex: 1 },
+  listRowMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  listMeta: { fontSize: 12, fontFamily: "Poppins_500Medium", color: "#64748B" },
+  typePill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  listType: { fontSize: 10, fontFamily: "Poppins_700Bold" },
+  actionPillBtn: { backgroundColor: "#0EA5E9", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  actionPillText: { color: "#FFFFFF", fontSize: 12, fontFamily: "Poppins_600SemiBold" },
+
+  doubtItem: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
+  doubtHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  doubtStudent: { flexDirection: "row", alignItems: "center", gap: 6 },
+  doubtStudentName: { fontSize: 13, fontFamily: "Poppins_600SemiBold", color: "#0F172A" },
+  batchPill: { backgroundColor: "#F1F5F9", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  batchPillText: { fontSize: 9, fontFamily: "Poppins_700Bold", color: "#64748B" },
+  doubtTime: { fontSize: 11, fontFamily: "Poppins_400Regular", color: "#94A3B8" },
+  doubtQuestion: { fontSize: 14, fontFamily: "Poppins_500Medium", color: "#334155", lineHeight: 22, marginBottom: 12 },
+  replyBtn: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", backgroundColor: "#F0F9FF", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 6 },
+  replyBtnText: { fontSize: 12, fontFamily: "Poppins_600SemiBold", color: "#0EA5E9" },
+
+  listIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  listTextWrap: { flex: 1 },
+  listDesc: { fontSize: 12, fontFamily: "Poppins_400Regular", color: "#64748B", lineHeight: 18 },
 });
+
+

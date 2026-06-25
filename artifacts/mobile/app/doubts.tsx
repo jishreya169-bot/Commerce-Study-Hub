@@ -14,7 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useColors } from "@/hooks/useColors";
-import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
+import { turso } from "../lib/turso";
 import { SubjectChip } from "@/components/SubjectChip";
 import * as Haptics from "expo-haptics";
 
@@ -32,7 +33,9 @@ export default function DoubtsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { doubts, upvoteDoubt, addDoubt, user } = useApp();
+  const { user } = useAuth();
+  
+  const [doubts, setDoubts] = useState<any[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("All");
   const [tab, setTab] = useState<"all" | "resolved" | "mine">("all");
   const [showAsk, setShowAsk] = useState(false);
@@ -42,19 +45,72 @@ export default function DoubtsScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
+  const fetchDoubts = async () => {
+    try {
+      const res = await turso.execute("SELECT id, question, subject, askedBy, teacherReply, resolved, createdAt FROM doubts ORDER BY createdAt DESC");
+      const mapped = res.rows.map(r => ({
+        id: r[0] as string,
+        question: r[1] as string,
+        subject: r[2] as string,
+        askedBy: r[3] as string,
+        teacherReply: r[4] as string,
+        resolved: !!r[5],
+        askedAt: new Date(r[6] as string).toLocaleDateString(),
+        answersCount: r[4] ? 1 : 0,
+        upvotes: 0,
+        upvoted: false,
+        answers: r[4] ? [{
+           id: "ans_" + r[0],
+           answeredBy: "Teacher",
+           isExpert: true,
+           upvotes: 0,
+           text: r[4] as string
+        }] : []
+      }));
+      setDoubts(mapped);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchDoubts();
+  }, []);
+
   const filtered = doubts.filter((d) => {
     const matchSub = selectedSubject === "All" || d.subject === selectedSubject;
-    const matchTab = tab === "all" ? !d.resolved : tab === "resolved" ? d.resolved : d.askedBy === user.name || d.askedBy === "You";
+    const matchTab = tab === "all" ? !d.resolved : tab === "resolved" ? d.resolved : (d.askedBy === user?.name || d.askedBy === "You");
     return matchSub && matchTab;
   });
 
-  const handleAsk = () => {
+  const handleAsk = async () => {
     if (!newQ.trim()) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addDoubt({ question: newQ.trim(), subject: newSubject, askedBy: user.name });
-    setNewQ("");
-    setShowAsk(false);
-    setTab("mine");
+    
+    try {
+      const id = Date.now().toString();
+      await turso.execute({
+        sql: "INSERT INTO doubts (id, question, subject, askedBy, studentId, resolved, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        args: [id, newQ.trim(), newSubject, user?.name || "Student", user?.id || "", 0, new Date().toISOString()]
+      });
+      setNewQ("");
+      setShowAsk(false);
+      setTab("mine");
+      fetchDoubts();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to post doubt.");
+    }
+  };
+
+  const upvoteDoubt = (id: string) => {
+    Haptics.selectionAsync();
+    setDoubts(prev => prev.map(d => {
+      if (d.id === id) {
+        return { ...d, upvoted: !d.upvoted, upvotes: d.upvoted ? d.upvotes - 1 : d.upvotes + 1 };
+      }
+      return d;
+    }));
   };
 
   return (
@@ -136,7 +192,7 @@ export default function DoubtsScreen() {
                 <Text style={[styles.doubtQuestion, { color: colors.foreground }]}>{d.question}</Text>
 
                 <View style={styles.doubtActions}>
-                  <TouchableOpacity onPress={() => { upvoteDoubt(d.id); Haptics.selectionAsync(); }} style={styles.actionBtn} activeOpacity={0.7}>
+                  <TouchableOpacity onPress={() => upvoteDoubt(d.id)} style={styles.actionBtn} activeOpacity={0.7}>
                     <Ionicons name={d.upvoted ? "arrow-up-circle" : "arrow-up-circle-outline"} size={17} color={d.upvoted ? colors.primary : colors.mutedForeground} />
                     <Text style={[styles.actionText, { color: d.upvoted ? colors.primary : colors.mutedForeground }]}>{d.upvotes}</Text>
                   </TouchableOpacity>
@@ -152,7 +208,7 @@ export default function DoubtsScreen() {
 
                 {isExpanded && d.answers.length > 0 && (
                   <View style={[styles.answersSection, { borderTopColor: colors.border }]}>
-                    {d.answers.map((ans) => (
+                    {d.answers.map((ans: any) => (
                       <View key={ans.id} style={[styles.answerCard, { backgroundColor: colors.muted }]}>
                         <View style={styles.answerHead}>
                           <View style={[styles.answerAvatar, { backgroundColor: ans.isExpert ? colors.primary + "20" : colors.secondary }]}>

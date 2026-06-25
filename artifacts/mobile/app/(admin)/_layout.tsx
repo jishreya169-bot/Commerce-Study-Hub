@@ -1,70 +1,100 @@
-import { Tabs } from "expo-router";
+import { Tabs, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View, Text } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { BlurView } from "expo-blur";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+const ACCENT = "#0EA5E9";
 
 export default function AdminTabLayout() {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  
+  const bottomPadding = Platform.OS === "android" ? Math.max(insets.bottom, 12) : insets.bottom;
+  const tabHeight = Platform.OS === "web" ? 84 : 60 + bottomPadding;
+
+  const isDashboardActive = !pathname.includes("academics") && !pathname.includes("finance") && !pathname.includes("profile");
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#9B7BC4",
+        tabBarActiveTintColor: ACCENT,
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: colors.card,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
+          backgroundColor: Platform.OS === "android" ? colors.card : "transparent",
+          borderTopWidth: 0,
           elevation: 0,
-          ...(Platform.OS === "web" ? { height: 84 } : {}),
+          shadowOpacity: 0,
+          height: tabHeight,
+          paddingBottom: bottomPadding,
         },
         tabBarBackground: () => (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border }]} />
-        ),
-        tabBarLabelStyle: { fontFamily: "Poppins_500Medium", fontSize: 10, marginBottom: 2 },
+          Platform.OS === "android" ? (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border }]} />
+          ) : (
+            <BlurView intensity={90} tint={colors.background === "#000000" ? "dark" : "light"} style={[StyleSheet.absoluteFill, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]} />
+          )
+        ),        
+        tabBarLabelStyle: { fontFamily: "Poppins_600SemiBold", fontSize: 10, marginTop: -2 },
+        tabBarIconStyle: { marginTop: 4 },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: "Dashboard",
-          tabBarIcon: ({ color }) => <Ionicons name="grid-outline" size={21} color={color} />,
+          tabBarIcon: ({ color, focused }) => {
+            const active = focused || isDashboardActive;
+            return <Ionicons name={active ? "grid" : "grid-outline"} size={22} color={active ? ACCENT : color} />;
+          },
+          tabBarLabel: ({ color, focused }) => {
+            const active = focused || isDashboardActive;
+            return <Text style={{ color: active ? ACCENT : color, fontFamily: "Poppins_600SemiBold", fontSize: 10, marginTop: -2 }}>Dashboard</Text>;
+          }
         }}
       />
       <Tabs.Screen
-        name="teachers"
+        name="academics"
         options={{
-          title: "Teachers",
-          tabBarIcon: ({ color }) => <Ionicons name="person-circle-outline" size={21} color={color} />,
+          title: "Academics",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "school" : "school-outline"} size={22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="students"
+        name="finance"
         options={{
-          title: "Students",
-          tabBarIcon: ({ color }) => <Ionicons name="people-outline" size={21} color={color} />,
+          title: "Finance",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "wallet" : "wallet-outline"} size={22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="fees"
+        name="profile"
         options={{
-          title: "Fees",
-          tabBarIcon: ({ color }) => <Ionicons name="card-outline" size={21} color={color} />,
+          title: "Profile",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "person" : "person-outline"} size={22} color={color} />
+          ),
         }}
       />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: "Settings",
-          tabBarIcon: ({ color }) => <Ionicons name="settings-outline" size={21} color={color} />,
-        }}
-      />
-      {/* Hidden tabs — accessible via settings */}
+
+      {/* Hidden tabs — accessible via dashboard quick actions */}
+      <Tabs.Screen name="teachers" options={{ href: null }} />
+      <Tabs.Screen name="students" options={{ href: null }} />
       <Tabs.Screen name="courses" options={{ href: null }} />
       <Tabs.Screen name="reports" options={{ href: null }} />
+      <Tabs.Screen name="communication" options={{ href: null }} />
+      <Tabs.Screen name="library" options={{ href: null }} />
+      <Tabs.Screen name="attendance" options={{ href: null }} />
+      <Tabs.Screen name="timetable" options={{ href: null }} />
     </Tabs>
   );
 }
